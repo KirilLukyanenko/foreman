@@ -190,18 +190,16 @@ public static partial class StackDetector
             testSignals.Contains("pytest", StringComparison.OrdinalIgnoreCase) || files.WithName("conftest.py").Any() ? "pytest" :
             files.All.Any(f => TestFileRegex().IsMatch(Path.GetFileName(f))) ? "unittest" : null;
 
-        var extras = new List<string>();
-        foreach (var section in new[] { "project.optional-dependencies", "dependency-groups" })
-        {
-            var body = TomlSection(pyproject, section);
-            foreach (Match m in TomlKeyRegex().Matches(body))
-                if (TestExtraRegex().IsMatch(m.Groups[1].Value)) extras.Add(m.Groups[1].Value);
-        }
+        // Extras (pip install .[tests]) and dependency groups (PEP 735, uv sync --group tests) install differently.
+        List<string> TestKeys(string section) =>
+            TomlKeyRegex().Matches(TomlSection(pyproject, section)).Select(m => m.Groups[1].Value)
+                .Where(k => TestExtraRegex().IsMatch(k)).Distinct().ToList();
 
         return new PythonStack(
             manifests, manager, version, framework,
             manifests.Where(f => RequirementsRegex().IsMatch(Path.GetFileName(f))).ToList(),
-            extras.Distinct().ToList());
+            TestKeys("project.optional-dependencies"),
+            TestKeys("dependency-groups"));
     }
 
     /// <summary>The body of a TOML table, up to the next table header. Enough for key names; not a TOML parser.</summary>

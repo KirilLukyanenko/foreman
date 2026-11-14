@@ -132,7 +132,7 @@ public sealed class BaselineStage(ReconOptions options, Action<string>? log = nu
         foreach (var step in plan.Setup)
         {
             log?.Invoke($"  {plan.Stack}: {step.Name} (network {step.Network.ToString().ToLowerInvariant()})");
-            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, step.Script, step.Network, step.Timeout, plan.TestEnv), Path.Combine(dir, step.Name), ct);
+            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, step.Script, step.Network, step.Timeout, plan.Env), Path.Combine(dir, step.Name), ct);
             steps.Add(Record(job, plan.Stack, step.Name, step.Network, r, dir));
             if (!r.Ok)
             {
@@ -151,7 +151,7 @@ public sealed class BaselineStage(ReconOptions options, Action<string>? log = nu
             log?.Invoke($"  {plan.Stack}: test run {i}/{options.BaselineRuns} (network none)");
             var outDir = Path.Combine(dir, $"run{i}");
             if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
-            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, plan.TestScript, Network.None, BaselinePlanner.TestTimeout, plan.TestEnv), outDir, ct);
+            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, plan.TestScript, Network.None, BaselinePlanner.TestTimeout, plan.Env), outDir, ct);
             testRuns.Add(Record(job, plan.Stack, $"run{i}", Network.None, r, dir));
             runs.Add(TestReports.ParseFolder(outDir, DockerSandbox.RepoPath));
         }

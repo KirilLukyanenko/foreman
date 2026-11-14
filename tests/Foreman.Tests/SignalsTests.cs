@@ -21,7 +21,7 @@ public class CiReaderTests
                   - run: "npm ci"
             """;
 
-        Assert.Equal(["dotnet restore", "dotnet build --no-restore", "dotnet test --no-build", "npm ci"], CiReader.Commands(yaml));
+        Assert.Equal(["dotnet restore", "dotnet build --no-restore\n# a comment\ndotnet test --no-build", "npm ci"], CiReader.Commands(yaml));
     }
 
     [Fact]

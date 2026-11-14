@@ -88,6 +88,7 @@ public class StackDetectorTests
         Assert.Equal(">=3.10", s.PythonVersion);
         Assert.Equal("pytest", s.TestFramework);
         Assert.Equal(["tests"], s.TestExtras);
+        Assert.Empty(s.TestGroups);
     }
 
     [Fact]
@@ -102,5 +103,37 @@ public class StackDetectorTests
     {
         using var repo = new TempRepo(("go.mod", "module x"), ("Cargo.toml", "[package]"));
         Assert.Equal(["go", "rust"], StackDetector.UnsupportedStacks(RepoFiles.Scan(repo.Root)));
+    }
+}
+
+public class PythonGroupsTests
+{
+    [Fact]
+    public void Dependency_groups_are_separate_from_extras_and_reach_uv_sync()
+    {
+        using var repo = new TempRepo(
+            ("pyproject.toml", """
+                [project]
+                name = "lib"
+
+                [dependency-groups]
+                dev = [
+                    "ruff",
+                ]
+                docs = ["sphinx"]
+                tests = [
+                    "pytest",
+                ]
+                """),
+            ("uv.lock", ""),
+            ("tests/test_lib.py", ""));
+
+        var s = Foreman.Recon.Triage.StackDetector.Python(Foreman.Recon.Triage.RepoFiles.Scan(repo.Root))!;
+        Assert.Empty(s.TestExtras);
+        Assert.Equal(["dev", "tests"], s.TestGroups);
+
+        var plan = Foreman.Recon.Baseline.BaselinePlanner.Python(s);
+        Assert.Contains("uv sync --frozen --all-extras --group 'dev' --group 'tests'", plan.Setup[0].Script);
+        Assert.Contains("--junitxml=\"$OUT/pytest.xml\"", plan.TestScript);
     }
 }

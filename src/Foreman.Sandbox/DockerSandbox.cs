@@ -16,18 +16,22 @@ public sealed record SandboxLimits(double Cpus = 4, string Memory = "6g", int Pi
     public static readonly SandboxLimits Default = new();
 }
 
+/// <summary>A script to run in the sandbox. It writes files it wants to keep to <c>$OUT</c>.</summary>
 public sealed record SandboxRun(string Image, string Script, Network Network, TimeSpan Timeout, IReadOnlyDictionary<string, string>? Env = null);
 
 /// <summary>
-/// One Docker volume per job holds the repository copy (<c>/work/repo</c>) and a home directory with package caches
-/// (<c>/work/home</c>). The untrusted code runs as a non-root user with no capabilities and never sees the host
-/// filesystem: the only bind mount is the stage's output folder at <c>/out</c>. No secrets are passed in.
+/// One Docker volume per job holds the repository copy (<c>/work/repo</c>), a home directory with package caches
+/// (<c>/work/home</c>) and run outputs (<c>/work/out</c>). The untrusted code runs as a non-root user with no
+/// capabilities and never sees the host filesystem: files move in and out with <c>docker cp</c>, not bind mounts.
+/// That also works where bind mounts don't (a remote Docker host, or a host folder Docker can't see). No secrets
+/// are passed in.
 /// </summary>
 public sealed class DockerSandbox
 {
     public const string Uid = "1000:1000";
     public const string RepoPath = "/work/repo";
     public const string HomePath = "/work/home";
+    public const string OutRoot = "/work/out";
 
     private readonly SandboxLimits _limits;
     private int _runs;
@@ -61,58 +65,93 @@ public sealed class DockerSandbox
     }
 
     /// <summary>
-    /// Creates the volume and copies the repository into it, without <paramref name="excluded"/> (agent configuration
-    /// from the repository: Claude Code has had CVEs where a repository's settings ran code before the trust dialog).
-    /// This one step runs as root with the default capabilities, because it sets ownership; it runs only our own
-    /// copy command.
+    /// Recreates the volume and copies the repository into it, then deletes <paramref name="excluded"/> (agent
+    /// configuration from the repository: Claude Code has had CVEs where a repository's settings ran code before the
+    /// trust dialog). The finishing step runs as root because it sets ownership; it runs only our own commands.
     /// </summary>
     public async Task PopulateAsync(string hostRepoDir, string helperImage, IEnumerable<string> excluded)
     {
-        var create = await Proc.RunAsync("docker", ["volume", "create", Volume]);
-        if (!create.Ok) throw new InvalidOperationException($"docker volume create failed: {create.Tail(5)}");
+        await Proc.RunAsync("docker", ["volume", "rm", "-f", Volume]);
+        await Docker("volume", "create", Volume);
 
         var remove = string.Concat(excluded.Select(p => $" {RepoPath}/'{p.Replace("'", "")}'"));
-        var script = $"set -e; rm -rf {RepoPath} {HomePath}; mkdir -p {RepoPath} {HomePath}; cp -a /src/. {RepoPath}/;"
-            + (remove.Length > 0 ? $" rm -rf{remove};" : "") + $" chown -R {Uid} /work";
-        var r = await Proc.RunAsync("docker",
-            ["run", "--rm", "--network", "none", "-v", $"{Volume}:/work", "-v", $"{Path.GetFullPath(hostRepoDir)}:/src:ro", helperImage, "sh", "-c", script],
-            timeout: TimeSpan.FromMinutes(10));
-        if (!r.Ok) throw new InvalidOperationException($"copying the repository into the sandbox failed: {r.Tail(10)}");
+        var finish = $"set -e; mkdir -p {HomePath} {OutRoot};" + (remove.Length > 0 ? $" rm -rf{remove};" : "") + $" chown -R {Uid} /work";
+        var helper = $"{Volume}-populate";
+        await Proc.RunAsync("docker", ["rm", "-f", helper]);
+        await Docker("create", "--name", helper, "--network", "none", "-v", $"{Volume}:/work", helperImage, "sh", "-c", finish);
+        try
+        {
+            await Docker("cp", Path.GetFullPath(hostRepoDir) + Path.DirectorySeparatorChar + ".", $"{helper}:{RepoPath}");
+            var r = await Proc.RunAsync("docker", ["start", "-a", helper], timeout: TimeSpan.FromMinutes(10));
+            if (!r.Ok) throw new InvalidOperationException($"preparing the sandbox copy failed: {r.Tail(10)}");
+        }
+        finally
+        {
+            await Proc.RunAsync("docker", ["rm", "-f", helper]);
+        }
     }
 
-    /// <summary>Runs a bash script in the repository folder. <paramref name="outDir"/> is mounted at /out.</summary>
-    public async Task<ProcResult> RunAsync(SandboxRun run, string outDir, CancellationToken ct = default)
+    /// <summary>
+    /// Runs a bash script in the repository folder, then copies what it wrote to <c>$OUT</c> into
+    /// <paramref name="hostOutDir"/>.
+    /// </summary>
+    public async Task<ProcResult> RunAsync(SandboxRun run, string hostOutDir, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(outDir);
-        var name = $"{Volume}-{Interlocked.Increment(ref _runs)}-{Guid.NewGuid().ToString("N")[..6]}";
+        var id = $"{Interlocked.Increment(ref _runs)}-{Guid.NewGuid().ToString("N")[..6]}";
+        var name = $"{Volume}-{id}";
+        var outPath = $"{OutRoot}/{id}";
         List<string> args =
         [
             "run", "--rm", "--name", name,
             "--user", Uid,
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pids-limit", _limits.Pids.ToString(),
+            "--pids-limit", _limits.Pids.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--memory", _limits.Memory,
             "--cpus", _limits.Cpus.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--network", run.Network == Network.None ? "none" : "bridge",
             "-e", $"HOME={HomePath}",
+            "-e", $"OUT={outPath}",
             "-e", "CI=true",
             "-e", "DOTNET_CLI_TELEMETRY_OPTOUT=1",
             "-e", "DOTNET_NOLOGO=1",
             "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
             "-e", "PIP_DISABLE_PIP_VERSION_CHECK=1",
             "-v", $"{Volume}:/work",
-            "-v", $"{Path.GetFullPath(outDir)}:/out",
             "-w", RepoPath,
         ];
         foreach (var (k, v) in run.Env ?? new Dictionary<string, string>()) args.AddRange(["-e", $"{k}={v}"]);
-        args.AddRange([run.Image, "bash", "-c", "set -o pipefail\n" + run.Script]);
+        args.AddRange([run.Image, "bash", "-c", $"set -o pipefail\nmkdir -p \"$OUT\"\n{run.Script}"]);
 
         var result = await Proc.RunAsync("docker", args, timeout: run.Timeout, ct: ct);
         if (result.TimedOut)
             await Proc.RunAsync("docker", ["kill", name], timeout: TimeSpan.FromSeconds(30), ct: CancellationToken.None);
+
+        await CopyOutAsync(outPath, hostOutDir, run.Image);
         return result;
     }
 
+    private async Task CopyOutAsync(string containerPath, string hostDir, string image)
+    {
+        Directory.CreateDirectory(hostDir);
+        var helper = $"{Volume}-copy-{Guid.NewGuid().ToString("N")[..6]}";
+        await Docker("create", "--name", helper, "--network", "none", "-v", $"{Volume}:/work", image, "true");
+        try
+        {
+            // A run that died before creating $OUT leaves nothing to copy; that is not an error here.
+            await Proc.RunAsync("docker", ["cp", $"{helper}:{containerPath}/.", Path.GetFullPath(hostDir)]);
+        }
+        finally
+        {
+            await Proc.RunAsync("docker", ["rm", "-f", helper]);
+        }
+    }
+
     public async Task RemoveAsync() => await Proc.RunAsync("docker", ["volume", "rm", "-f", Volume]);
+
+    private static async Task Docker(params string[] args)
+    {
+        var r = await Proc.RunAsync("docker", args, timeout: TimeSpan.FromMinutes(10));
+        if (!r.Ok) throw new InvalidOperationException($"docker {args[0]} failed: {r.Tail(5)}");
+    }
 }

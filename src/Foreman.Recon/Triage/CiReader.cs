@@ -48,21 +48,33 @@ public static partial class CiReader
                 continue;
             }
 
-            // Block scalar (run: |) or a list of commands (script:\n  - cmd): take the more-indented lines below.
+            // The lines below the key: a block scalar (run: |) is one script, kept whole because its lines depend on
+            // each other; a list (script:\n  - cmd) is one command per item.
+            var block = new List<string>();
             for (var j = i + 1; j < lines.Length; j++)
             {
                 var line = lines[j];
-                if (line.Trim().Length == 0) continue;
+                if (line.Trim().Length == 0) { if (rest.Length > 0) block.Add(""); continue; }
                 var indent = line.Length - line.TrimStart().Length;
-                if (indent <= keyIndent && !(rest.Length == 0 && indent == keyIndent && line.TrimStart().StartsWith("- ", StringComparison.Ordinal))) break;
-                var text = line.Trim();
+                var listItem = line.TrimStart().StartsWith("- ", StringComparison.Ordinal);
+                if (indent < keyIndent || indent == keyIndent && !(rest.Length == 0 && listItem)) break;
                 if (rest.Length == 0)
                 {
-                    if (!text.StartsWith("- ", StringComparison.Ordinal)) break;
-                    text = Unquote(text[2..].Trim());
+                    if (!listItem) break;
+                    var item = Unquote(line.Trim()[2..].Trim());
+                    if (item.Length > 0 && !item.StartsWith('#')) yield return Clean(item);
                 }
-                if (text.Length > 0 && !text.StartsWith('#')) yield return Clean(text);
+                else
+                {
+                    block.Add(line);
+                }
                 i = j;
+            }
+            if (rest.Length > 0)
+            {
+                var margin = block.Where(l => l.Trim().Length > 0).Select(l => l.Length - l.TrimStart().Length).DefaultIfEmpty(0).Min();
+                var script = string.Join('\n', block.Select(l => l.Length >= margin ? l[margin..] : l.TrimStart())).Trim();
+                if (script.Length > 0) yield return Clean(script);
             }
         }
     }
@@ -70,7 +82,7 @@ public static partial class CiReader
     private static string Unquote(string s) =>
         s.Length >= 2 && (s[0] == '"' && s[^1] == '"' || s[0] == '\'' && s[^1] == '\'') ? s[1..^1] : s;
 
-    private static string Clean(string s) => s.Length > 300 ? s[..300] + "…" : s;
+    private static string Clean(string s) => s.Length > 1500 ? s[..1500] + "…" : s;
 
     [GeneratedRegex(@"^(\s*)(-\s+)?(run|script|command)\s*:\s*(.*)$")]
     private static partial Regex KeyRegex();

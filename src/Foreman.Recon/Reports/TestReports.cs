@@ -107,8 +107,9 @@ public static class TestReports
     }
 
     /// <summary>
-    /// Parameterised tests can repeat a name. Repeats get a #2, #3 suffix in report order, so ids stay unique and
-    /// stable as long as the order is.
+    /// Makes ids stable across runs. Parameterised tests often put run-time values in their display names
+    /// (<c>DateTime.Now</c>, <c>Guid.NewGuid()</c>), so the same test gets a new name every run; those values become
+    /// placeholders. Names that then repeat get a #2, #3 suffix in report order.
     /// </summary>
     internal static IReadOnlyList<TestOutcome> Deduplicate(IEnumerable<TestOutcome> outcomes)
     {
@@ -116,11 +117,32 @@ public static class TestReports
         var result = new List<TestOutcome>();
         foreach (var o in outcomes)
         {
-            var n = seen[o.Id] = seen.GetValueOrDefault(o.Id) + 1;
-            result.Add(n == 1 ? o : o with { Id = $"{o.Id}#{n}" });
+            var id = NormalizeId(o.Id);
+            var n = seen[id] = seen.GetValueOrDefault(id) + 1;
+            result.Add(o with { Id = n == 1 ? id : $"{id}#{n}" });
         }
         return result;
     }
+
+    internal static string NormalizeId(string id)
+    {
+        id = VolatileGuid.Replace(id, "<guid>");
+        id = VolatileIsoTime.Replace(id, "<time>");
+        id = VolatileLocalTime.Replace(id, "<time>");
+        return VolatileAddress.Replace(id, "<addr>");
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex VolatileGuid =
+        new(@"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex VolatileIsoTime =
+        new(@"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex VolatileLocalTime =
+        new(@"\b\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2}( ?[AP]M)?( [+-]\d{2}:\d{2})?", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex VolatileAddress =
+        new(@"\b0x[0-9a-fA-F]{6,}\b", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static XDocument Load(string xml)
     {

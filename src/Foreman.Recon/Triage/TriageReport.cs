@@ -44,7 +44,8 @@ public sealed record PythonStack(
     string? PythonVersion,
     string? TestFramework,
     IReadOnlyList<string> RequirementsFiles,
-    IReadOnlyList<string> TestExtras);
+    IReadOnlyList<string> TestExtras,
+    IReadOnlyList<string> TestGroups);
 
 /// <summary>A command from a CI file. CI is the best hint for how a project really builds and tests.</summary>
 public sealed record CiCommand(string File, string Command);

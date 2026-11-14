@@ -16,7 +16,7 @@ public sealed record StackPlan(
     string Image,
     IReadOnlyList<PlanStep> Setup,
     string? TestScript,
-    IReadOnlyDictionary<string, string> TestEnv,
+    IReadOnlyDictionary<string, string> Env,
     IReadOnlyList<string> Notes,
     string? Unsupported = null);
 
@@ -58,12 +58,12 @@ public static partial class BaselinePlanner
         {
             notes.Add("global.json selects Microsoft.Testing.Platform: TRX needs the TrxReport extension in the test projects");
             test = string.Join("\n", targets.Select(t =>
-                $"dotnet test {(t.EndsWith("proj", StringComparison.OrdinalIgnoreCase) ? "--project" : "--solution")} {Sh.Quote(t)} --no-build --report-trx --results-directory /out"));
+                $"dotnet test {(t.EndsWith("proj", StringComparison.OrdinalIgnoreCase) ? "--project" : "--solution")} {Sh.Quote(t)} --no-build --report-trx --results-directory \"$OUT\""));
         }
         else
         {
             test = string.Join("\n", targets.Select(t =>
-                $"dotnet test {Sh.Quote(t)} --no-build --logger \"trx;LogFilePrefix=tests\" --results-directory /out"));
+                $"dotnet test {Sh.Quote(t)} --no-build --logger \"trx;LogFilePrefix=tests\" --results-directory \"$OUT\""));
         }
 
         // Test projects for an older runtime still run on the image's newer one.
@@ -104,7 +104,7 @@ public static partial class BaselinePlanner
         if (s.PackageManager == "bun")
             return new StackPlan("node", image, [], null, new Dictionary<string, string>(), notes, "bun is not supported yet");
 
-        const string corepack = "corepack enable --install-directory \"$HOME/bin\"\nexport PATH=\"$HOME/bin:$PATH\"\n";
+        const string corepack = "mkdir -p \"$HOME/bin\"\ncorepack enable --install-directory \"$HOME/bin\"\nexport PATH=\"$HOME/bin:$PATH\"\n";
         var install = s.PackageManager switch
         {
             "pnpm" => corepack + (s.Lockfile is null ? "pnpm install" : "pnpm install --frozen-lockfile"),
@@ -114,10 +114,10 @@ public static partial class BaselinePlanner
 
         string? test = s.TestFramework switch
         {
-            "jest" => "npx --no-install jest --ci --json --outputFile=/out/jest.json",
-            "vitest" => "npx --no-install vitest run --reporter=default --reporter=junit --outputFile.junit=/out/vitest.xml",
-            "mocha" => "npx --no-install mocha --reporter xunit --reporter-option output=/out/mocha.xml",
-            "node" => "npm test -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=/out/node.xml",
+            "jest" => "npx --no-install jest --ci --json --outputFile=\"$OUT/jest.json\"",
+            "vitest" => "npx --no-install vitest run --reporter=default --reporter=junit --outputFile.junit=\"$OUT/vitest.xml\"",
+            "mocha" => "npx --no-install mocha --reporter xunit --reporter-option output=\"$OUT/mocha.xml\"",
+            "node" => "npm test -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=\"$OUT/node.xml\"",
             _ when s.TestScript is not null => "npm test",
             _ => null,
         };
@@ -131,7 +131,7 @@ public static partial class BaselinePlanner
         return new StackPlan("node", image,
             [new PlanStep("install", cd + install, Network.Open, Install)],
             test is null ? null : cd + test,
-            new Dictionary<string, string> { ["COREPACK_ENABLE_NETWORK"] = "0" }, notes);
+            new Dictionary<string, string> { ["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0" }, notes);
     }
 
     internal static int NodeMajor(string? declared)
@@ -151,18 +151,20 @@ public static partial class BaselinePlanner
         var version = PythonVersion(s.PythonVersion);
         var image = $"python:{version}-bookworm";
         var extras = s.TestExtras.Count == 0 ? "" : $"[{string.Join(',', s.TestExtras)}]";
+        var groups = string.Concat(s.TestGroups.Select(g => $" --group {Sh.Quote(g)}"));
 
         const string venv = "python -m venv \"$HOME/venv\"\n. \"$HOME/venv/bin/activate\"\npython -m pip install --quiet --upgrade pip\n";
         var install = s.PackageManager switch
         {
-            "uv" => "pip install --quiet uv\nUV_PROJECT_ENVIRONMENT=\"$HOME/venv\" uv sync --frozen --all-extras",
-            "poetry" => "pip install --quiet poetry\npoetry config virtualenvs.create false\npoetry install --no-interaction --all-extras",
-            _ => PipInstall(s, extras),
+            "uv" => $"pip install --quiet uv\nUV_PROJECT_ENVIRONMENT=\"$HOME/venv\" uv sync --frozen --all-extras{groups}",
+            "poetry" => "pip install --quiet poetry\npoetry config virtualenvs.create false\npoetry install --no-interaction --all-extras"
+                        + (s.TestGroups.Count == 0 ? "" : $" --with {string.Join(',', s.TestGroups)}"),
+            _ => PipInstall(s, extras, groups),
         };
         install += "\npip install --quiet pytest";
 
         string? test = s.TestFramework is null ? null
-            : ". \"$HOME/venv/bin/activate\"\npython -m pytest -q -p no:cacheprovider --junitxml=/out/pytest.xml";
+            : ". \"$HOME/venv/bin/activate\"\npython -m pytest -q -p no:cacheprovider --junitxml=\"$OUT/pytest.xml\"";
         if (s.TestFramework is null) notes.Add("no pytest or unittest tests found");
         if (s.TestFramework == "unittest") notes.Add("unittest tests run through pytest for the JUnit report");
 
@@ -171,10 +173,10 @@ public static partial class BaselinePlanner
             test, new Dictionary<string, string>(), notes);
     }
 
-    private static string PipInstall(PythonStack s, string extras)
+    private static string PipInstall(PythonStack s, string extras, string groups)
     {
         var lines = new List<string>();
-        if (s.Manifests.Any(m => m is "pyproject.toml" or "setup.py" or "setup.cfg")) lines.Add($"pip install --quiet -e \".{extras}\"");
+        if (s.Manifests.Any(m => m is "pyproject.toml" or "setup.py" or "setup.cfg")) lines.Add($"pip install --quiet -e \".{extras}\"{groups}");
         foreach (var r in s.RequirementsFiles) lines.Add($"pip install --quiet -r {Sh.Quote(r)}");
         return lines.Count == 0 ? "true" : string.Join("\n", lines);
     }

@@ -75,6 +75,20 @@ public class TestReportsTests
     }
 
     [Fact]
+    public void Run_time_values_in_names_become_placeholders()
+    {
+        Assert.Equal(
+            "T.Returns(input: <time>, name: \"now\")",
+            TestReports.NormalizeId("T.Returns(input: 2026-11-14T15:16:21.5824354+00:00, name: \"now\")"));
+        Assert.Equal("T.Id(<guid>)", TestReports.NormalizeId("T.Id(40da261b-c364-4351-a704-f0c666553311)"));
+        Assert.Equal("T.At(<time>)", TestReports.NormalizeId("T.At(11/14/2026 3:16:21 PM)"));
+
+        var run1 = TestReports.Deduplicate([new("T(2026-11-14T15:16:21Z)", TestStatus.Passed, null), new("T(2026-11-14T15:16:22Z)", TestStatus.Passed, null)]);
+        var run2 = TestReports.Deduplicate([new("T(2026-11-14T15:17:01Z)", TestStatus.Passed, null), new("T(2026-11-14T15:17:02Z)", TestStatus.Passed, null)]);
+        Assert.Equal(run1.Select(o => o.Id), run2.Select(o => o.Id));
+    }
+
+    [Fact]
     public void Repeated_names_get_a_suffix()
     {
         var r = TestReports.Deduplicate([new("t", TestStatus.Passed, null), new("t", TestStatus.Failed, null), new("u", TestStatus.Passed, null)]);

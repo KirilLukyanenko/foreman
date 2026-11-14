@@ -1,3 +1,5 @@
+using Foreman.Core;
+
 namespace Foreman.Recon.Environment;
 
 public sealed record EnvStep(string Name, string Script, bool Network, bool AsRoot, int TimeoutMinutes);
@@ -20,22 +22,6 @@ public sealed record Validation(bool Ok, string? Reason, int Tests, int Passed, 
 {
     public double PassRate => Tests == 0 ? 0 : (double)Passed / Tests;
 }
-
-public sealed record AgentRunSummary(
-    string Driver,
-    string Model,
-    string Outcome,
-    int Turns,
-    int ToolCalls,
-    decimal CostUsd,
-    bool CostIsEstimate,
-    long InputTokens,
-    long OutputTokens,
-    long CacheReadTokens,
-    long CacheWriteTokens,
-    double Seconds,
-    string PromptSha256,
-    string? Error = null);
 
 /// <summary>What the agent left behind: an accepted spec, or the reason it gave up.</summary>
 public sealed record AgentResult(EnvironmentSpec? Accepted, Validation? Validation, string? AcceptedFailuresReason, string? GaveUp, int ToolCalls);

@@ -1,15 +1,19 @@
 using Foreman.Agents;
 using Foreman.Core;
+using Foreman.Evals;
 using Foreman.Recon;
 using Foreman.Recon.Baseline;
+using Foreman.Recon.CodeMap;
+using Foreman.Recon.Dossier;
 using Foreman.Recon.Environment;
 using Foreman.Recon.Triage;
 
-// foreman recon <repo path or git url> [--task file.md] [--ref branch] [--runs 3] [--agent auto|claude-code|api|none]
+// foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3] [--agent auto|claude-code|api|none]
 //               [--model id] [--effort low|medium|high] [--budget usd] [--home dir]
 // foreman recon --job <id> [--force stage,stage]       resume or rerun stages of an existing job
 // foreman show <id>                                     summary of a job's recon
-// foreman mcp-environment --job <id> --stack <s> --image <i>   MCP server for the environment agent (stdio)
+// foreman mcp environment --job <id> --stack <s> --image <i>  MCP server for an agent's toolbox (stdio)
+// foreman mcp reader --job <id> --section <name>
 
 var home = Arg("--home") ?? Environment.GetEnvironmentVariable("FOREMAN_HOME")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
@@ -21,19 +25,24 @@ switch (args.FirstOrDefault())
 {
     case "recon":
         return await Recon();
+    case "eval":
+        return await Eval();
     case "show":
         return Show(args.ElementAtOrDefault(1));
-    case "mcp-environment":
+    case "mcp":
         // stdout carries the MCP protocol from here on: nothing else may be written to it.
-        await EnvironmentMcpServer.RunAsync(home, Required("--job"), Required("--stack"), Required("--image"));
+        await ToolboxMcpServer.RunAsync(Toolbox(args.ElementAtOrDefault(1)));
         return 0;
     default:
         Console.Error.WriteLine("""
             usage:
-              foreman recon <repo path or git url> [--task file.md] [--ref branch] [--runs 3]
+              foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3]
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
-              foreman recon --job <id> [--force fetch,triage,environment,baseline]
+                            [--reader-model id] [--sections architecture,conventions,task,risks]
+              foreman recon --job <id> [--force fetch,triage,codemap,environment,baseline,dossier]
               foreman show <job id>
+              foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
+                                    [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
         return 2;
 }
@@ -42,7 +51,8 @@ async Task<int> Recon()
 {
     var options = new ReconOptions(
         BaselineRuns: int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 3,
-        Ref: Arg("--ref"));
+        Ref: Arg("--ref"),
+        Commit: Arg("--commit"));
 
     Job job;
     if (Arg("--job") is { } id)
@@ -56,31 +66,67 @@ async Task<int> Recon()
         job = Job.Create(home, source, Arg("--task"));
     }
     var driver = Driver();
-    Console.WriteLine($"job {job.Id}\n    {job.Dir}\n    environment agent: {(driver is null ? "off" : $"{driver.Name}, {driver.Model}")}");
+    Console.WriteLine($"job {job.Id}\n    {job.Dir}\n    agents: {(driver is null ? "off" : $"{driver.Name}; environment on {Arg("--model") ?? driver.Model}, readers on {Arg("--reader-model") ?? DossierOptions.DefaultModel}")}");
 
     var force = Arg("--force")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
-    var pipeline = new Pipeline([
+    IStage[] stages =
+    [
         new FetchStage(options),
         new TriageStage(),
-        new EnvironmentStage(options, driver, Console.WriteLine),
+        new CodeMapStage(null, options.Limits),
+        new EnvironmentStage(options, driver, Console.WriteLine, Arg("--model")),
         new BaselineStage(options, Console.WriteLine),
-    ]);
+        new DossierStage(driver, new DossierOptions(Arg("--reader-model") ?? DossierOptions.DefaultModel,
+            Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries)), Console.WriteLine),
+    ];
+    // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
+    if (Arg("--stages")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal) is { } only)
+        stages = stages.Where(s => only.Contains(s.Name)).ToArray();
+    var pipeline = new Pipeline(stages);
     var ok = await pipeline.RunAsync(job, force, Console.WriteLine, cts.Token);
     Show(job.Id);
     return ok ? 0 : 1;
 }
 
-IEnvironmentDriver? Driver()
+async Task<int> Eval()
 {
-    var model = Arg("--model") ?? ApiEnvironmentDriver.DefaultModel;
+    if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: only 'localization' exists so far"); return 2; }
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = LocalizationEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var eval = new LocalizationEval(home, log: Console.WriteLine, reader: args.Contains("--readers") ? Driver() : null, readerModel: Arg("--reader-model"));
+    var report = await eval.RunAsync(cases, args.Contains("--force"), cts.Token);
+    File.WriteAllText(Path.Combine(outDir, "results.json"), Json.Write(report));
+    var md = LocalizationEval.Markdown(report, cases);
+    File.WriteAllText(Path.Combine(outDir, "results.md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
+IToolbox Toolbox(string? kind)
+{
+    var job = Job.Open(home, Required("--job"));
+    return kind switch
+    {
+        "environment" => new EnvironmentTools(job, Required("--stack"), job.ReadJson<TriageReport>("triage", "triage.json").RemovedAgentConfig, startImage: Required("--image")),
+        "reader" => new ReaderTools(job, Required("--section")),
+        _ => throw new ArgumentException($"unknown toolbox '{kind}'"),
+    };
+}
+
+IAgentDriver? Driver()
+{
+    var model = ApiDriver.DefaultModel;
     var budget = decimal.TryParse(Arg("--budget"), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var b) ? b : 10m;
     var kind = Arg("--agent") ?? "auto";
     if (kind == "auto")
         kind = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") is { Length: > 0 } ? "api" : "claude-code";
     return kind switch
     {
-        "api" => new ApiEnvironmentDriver(model, Arg("--effort") ?? "medium"),
-        "claude-code" => new ClaudeCodeEnvironmentDriver(model, budget),
+        "api" => new ApiDriver(model, Arg("--effort") ?? "medium"),
+        "claude-code" => new ClaudeCodeDriver(model, budget),
         _ => null,
     };
 }
@@ -104,6 +150,12 @@ int Show(string? id)
                         agent config removed from the sandbox copy: {(t.RemovedAgentConfig.Count == 0 ? "none" : string.Join(", ", t.RemovedAgentConfig))}
             """);
     }
+    if (File.Exists(Path.Combine(job.Dir, "codemap", "codemap.json")))
+    {
+        var m = job.ReadJson<CodeMapReport>("codemap", "codemap.json");
+        Console.WriteLine($"codemap     {m.FilesParsed} files, {m.Definitions} definitions ({string.Join(", ", m.Languages.Select(l => $"{l.Language} {l.Files}"))}); {m.Generated.Count} generated, {m.Vendored.Count} vendored left out");
+        Console.WriteLine($"            map {m.General.Tokens} tokens{(m.Task is { } t ? $", task map {t.Tokens} tokens" : "")}; {string.Join(", ", m.Extractors.Select(x => $"{x.Key} {x.Value}"))}");
+    }
     if (File.Exists(Path.Combine(job.Dir, "environment", "environment.json")))
     {
         var e = job.ReadJson<EnvironmentReport>("environment", "environment.json");
@@ -124,6 +176,14 @@ int Show(string? id)
             var counts = s.Counts is { } c ? $"{c.Total} tests: {c.Pass} pass, {c.KnownRed} known-red, {c.Flaky} flaky, {c.Skipped} skipped" : s.Reason ?? "";
             Console.WriteLine($"            {s.Stack,-7} {s.Status}: {counts}\n                    {s.Image} · {steps}");
         }
+    }
+    if (File.Exists(Path.Combine(job.Dir, "dossier", "dossier.json")))
+    {
+        var d = job.ReadJson<DossierReport>("dossier", "dossier.json");
+        Console.WriteLine($"dossier     {d.DossierTokens} tokens, rules file {d.RulesTokens} tokens; {d.Seconds:0} s, ${d.CostUsd:0.00}{(d.CostIsEstimate ? " (estimate)" : "")}");
+        foreach (var r in d.Readers)
+            Console.WriteLine($"            {r.Section,-13} {(r.Accepted ? "accepted" : "MISSING")}, {r.Words} words, {r.Agent.ToolCalls} tool calls{(r.Warnings > 0 ? $", {r.Warnings} warnings" : "")}");
+        foreach (var x in d.Skipped) Console.WriteLine($"            skipped {x}");
     }
     return 0;
 }

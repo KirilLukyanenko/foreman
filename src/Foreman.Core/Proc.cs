@@ -24,7 +24,8 @@ public static class Proc
         string? cwd = null,
         TimeSpan? timeout = null,
         IReadOnlyDictionary<string, string?>? env = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? stdin = null)
     {
         var psi = new ProcessStartInfo(exe)
         {
@@ -34,6 +35,8 @@ public static class Proc
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
+            RedirectStandardInput = stdin is not null,
+            StandardInputEncoding = stdin is null ? null : new UTF8Encoding(false),
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
         if (env is not null)
@@ -43,6 +46,12 @@ public static class Proc
         using var p = Process.Start(psi) ?? throw new InvalidOperationException($"could not start {exe}");
         var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None);
         var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
+        if (stdin is not null)
+        {
+            // Long inputs go through stdin: a Windows command line is limited to 32,767 characters.
+            await p.StandardInput.WriteAsync(stdin);
+            p.StandardInput.Close();
+        }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (timeout is { } t) cts.CancelAfter(t);

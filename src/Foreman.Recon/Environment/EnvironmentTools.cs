@@ -7,14 +7,12 @@ using Foreman.Sandbox;
 
 namespace Foreman.Recon.Environment;
 
-public sealed record ToolOutput(string Text, bool IsError);
-
 /// <summary>
 /// The environment agent's whole world: four tools, all acting inside the sandbox. Shared by every driver (our own
 /// Claude API loop, or Claude Code through Foreman's MCP server), so drivers differ only in the model loop. Every
 /// call is appended to <c>tools.jsonl</c>; the outcome is written to <c>agent-result.json</c>.
 /// </summary>
-public sealed partial class EnvironmentTools : IAsyncDisposable
+public sealed partial class EnvironmentTools : IToolbox
 {
     public const int MaxToolCalls = 80;
     public const int MaxCommandSeconds = 1200;
@@ -55,11 +53,13 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
     private readonly IReadOnlyList<string> _excluded;
     private readonly SandboxLimits? _limits;
     private readonly IReadOnlyDictionary<string, string> _env;
+    private readonly string? _startImage;
     private SandboxSession? _session;
     private int _validations;
 
-    public EnvironmentTools(Job job, string stack, IReadOnlyList<string> excludedPaths, IReadOnlyDictionary<string, string>? env = null, SandboxLimits? limits = null)
+    public EnvironmentTools(Job job, string stack, IReadOnlyList<string> excludedPaths, IReadOnlyDictionary<string, string>? env = null, SandboxLimits? limits = null, string? startImage = null)
     {
+        _startImage = startImage;
         _job = job;
         _stack = stack;
         _excluded = excludedPaths;
@@ -73,6 +73,14 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
     public AgentResult? Result { get; private set; }
     public bool Finished => Result is not null;
     public string ResultFile => Path.Combine(_dir, "agent-result.json");
+    public string? Outcome => OutcomeOf(Result);
+
+    public static string? OutcomeOf(AgentResult? result) => result?.Accepted is not null ? "accepted" : result?.GaveUp is not null ? "gave_up" : null;
+
+    IReadOnlyList<ToolDefinition> IToolbox.Definitions => Definitions;
+
+    Task IToolbox.StartAsync(CancellationToken ct) =>
+        StartAsync(_startImage ?? throw new InvalidOperationException("no start image given"));
 
     /// <summary>Copies the repository into the agent's own volume and starts the session container.</summary>
     public async Task StartAsync(string image)
@@ -159,7 +167,7 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
     }
 
     /// <summary>Dispatch by name, for drivers that receive tool calls as JSON (our own API loop).</summary>
-    public async Task<ToolOutput> CallAsync(string name, IReadOnlyDictionary<string, JsonElement> input, CancellationToken ct = default)
+    public async Task<ToolOutput> CallAsync(string name, IReadOnlyDictionary<string, JsonElement> input, CancellationToken ct)
     {
         string? Str(string key) => input.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
         int? Int(string key) => input.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
@@ -177,9 +185,9 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
     }
 
     /// <summary>JSON schemas of the tools, for drivers that declare tools themselves.</summary>
-    public static IReadOnlyList<(string Name, string Description, JsonElement Schema)> Definitions { get; } =
+    public static IReadOnlyList<ToolDefinition> Definitions { get; } =
     [
-        ("run", RunDescription, Schema(new
+        new("run", RunDescription, Schema(new
         {
             type = "object",
             properties = new
@@ -190,14 +198,14 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
             required = new[] { "command" },
             additionalProperties = false,
         })),
-        ("use_image", UseImageDescription, Schema(new
+        new("use_image", UseImageDescription, Schema(new
         {
             type = "object",
             properties = new { image = new { type = "string", description = "Image with tag, e.g. node:22-bookworm." } },
             required = new[] { "image" },
             additionalProperties = false,
         })),
-        ("submit", SubmitDescription, Schema(new
+        new("submit", SubmitDescription, Schema(new
         {
             type = "object",
             properties = new
@@ -210,7 +218,7 @@ public sealed partial class EnvironmentTools : IAsyncDisposable
             required = new[] { "image", "setup_script", "test_script" },
             additionalProperties = false,
         })),
-        ("give_up", GiveUpDescription, Schema(new
+        new("give_up", GiveUpDescription, Schema(new
         {
             type = "object",
             properties = new { reason = new { type = "string", description = "What blocks the build or the tests, and what a human would have to provide." } },

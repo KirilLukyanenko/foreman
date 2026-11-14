@@ -3,18 +3,17 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Foreman.Core;
-using Foreman.Recon.Environment;
 
 namespace Foreman.Agents;
 
 /// <summary>
-/// Runs the environment agent as Claude Code without a UI, on the owner's Claude subscription instead of an API key.
-/// Claude Code gets none of its built-in tools (no shell, no file access on the host): its only tools are the four
-/// sandbox tools, served by Foreman's own MCP server (<c>foreman mcp-environment</c>) in a separate process. Claude
-/// Code's own system prompt is replaced by ours, it runs in an empty folder, user and project settings are not
-/// loaded, and anything not explicitly allowed is denied without asking.
+/// Runs an agent as Claude Code without a UI, on the owner's Claude subscription instead of an API key. Claude Code
+/// gets none of its built-in tools (no shell, no file access on the host): its only tools are the toolbox's, served
+/// by Foreman's own MCP server (<c>foreman mcp ...</c>) in a separate process. Claude Code's own system prompt is
+/// replaced by ours, it runs in an empty folder, user and project settings are not loaded, and anything not
+/// explicitly allowed is denied without asking.
 /// </summary>
-public sealed class ClaudeCodeEnvironmentDriver(string model = ApiEnvironmentDriver.DefaultModel, decimal maxBudgetUsd = 10m, TimeSpan? timeout = null) : IEnvironmentDriver
+public sealed class ClaudeCodeDriver(string model = ApiDriver.DefaultModel, decimal maxBudgetUsd = 10m, TimeSpan? timeout = null) : IAgentDriver
 {
     private static readonly string[] BuiltInTools =
         ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookEdit", "Agent", "Task", "TodoWrite"];
@@ -22,16 +21,18 @@ public sealed class ClaudeCodeEnvironmentDriver(string model = ApiEnvironmentDri
     public string Name => "claude-code";
     public string Model => model;
 
-    public async Task<AgentRunSummary> RunAsync(EnvironmentAgentRequest request, CancellationToken ct)
+    public async Task<AgentRunSummary> RunAsync(AgentRequest request, CancellationToken ct)
     {
-        using var span = Telemetry.Source.StartActivity("invoke_agent environment");
+        var runModel = request.Model ?? model;
+        var budget = request.MaxBudgetUsd ?? maxBudgetUsd;
+        using var span = Telemetry.Source.StartActivity($"invoke_agent {request.Agent}");
         span?.SetTag("gen_ai.operation.name", "invoke_agent");
-        span?.SetTag("gen_ai.agent.name", "environment");
-        span?.SetTag("gen_ai.request.model", model);
+        span?.SetTag("gen_ai.agent.name", request.Agent);
+        span?.SetTag("gen_ai.request.model", runModel);
         span?.SetTag("foreman.driver", Name);
 
         var job = request.Job;
-        var dir = job.StageDir(Path.Combine("environment", request.Stack, "claude-code"));
+        var dir = Directory.CreateDirectory(Path.Combine(request.WorkDir, "claude-code")).FullName;
         var cwd = Directory.CreateDirectory(Path.Combine(dir, "cwd")).FullName;
         var home = Path.GetDirectoryName(Path.GetDirectoryName(job.Dir))!;
 
@@ -44,19 +45,22 @@ public sealed class ClaudeCodeEnvironmentDriver(string model = ApiEnvironmentDri
                 {
                     ["type"] = "stdio",
                     ["command"] = command,
-                    ["args"] = new JsonArray([.. prefix.Select(p => (JsonNode)p!),
-                        "mcp-environment", "--home", home, "--job", job.Id, "--stack", request.Stack, "--image", request.StartImage]),
+                    ["args"] = new JsonArray([.. prefix.Select(p => (JsonNode)p!), "mcp", .. request.McpArgs.Select(a => (JsonNode)a!), "--home", home]),
                 },
             },
         };
+        var systemFile = Path.Combine(dir, "system-prompt.md");
+        File.WriteAllText(systemFile, request.System.Text, new UTF8Encoding(false));
         var mcpFile = Path.Combine(dir, "mcp.json");
         File.WriteAllText(mcpFile, mcpConfig.ToJsonString(Json.Options), new UTF8Encoding(false));
 
         List<string> args =
         [
-            "-p", request.Task,
-            "--system-prompt", request.System.Text,
-            "--model", model,
+            // The task goes through stdin and the system prompt through a file: both can exceed the 32,767
+            // characters of a Windows command line (a first message with two code maps does).
+            "-p",
+            "--system-prompt-file", systemFile,
+            "--model", runModel,
             "--tools", "",
             "--disallowedTools", string.Join(',', BuiltInTools),
             "--mcp-config", mcpFile,
@@ -65,41 +69,36 @@ public sealed class ClaudeCodeEnvironmentDriver(string model = ApiEnvironmentDri
             "--permission-mode", "dontAsk",
             "--setting-sources", "local",
             "--no-session-persistence",
-            "--max-budget-usd", maxBudgetUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--max-budget-usd", budget.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--output-format", "stream-json",
             "--verbose",
         ];
 
         var clock = Stopwatch.StartNew();
-        // A submit runs the whole setup and the tests in a fresh copy; image switches pull hundreds of megabytes.
-        // Both take minutes, far beyond Claude Code's default wait for an MCP tool.
+        // Some tools run for minutes (a fresh-copy verification, an image pull), far beyond Claude Code's default
+        // wait for an MCP tool.
         var env = new Dictionary<string, string?> { ["MCP_TOOL_TIMEOUT"] = "3600000", ["MCP_TIMEOUT"] = "120000" };
         ProcResult r;
         try
         {
-            r = await Proc.RunAsync(Environment.GetEnvironmentVariable("CLAUDE_BIN") ?? "claude", args, cwd, timeout ?? TimeSpan.FromMinutes(90), env, ct);
+            r = await Proc.RunAsync(Environment.GetEnvironmentVariable("CLAUDE_BIN") ?? "claude", args, cwd, timeout ?? TimeSpan.FromMinutes(90), env, ct, stdin: request.Task);
         }
         finally
         {
-            // Claude Code ends its MCP servers without a graceful shutdown, so the server can't clean up after
-            // itself: remove the session container and the agent's scratch volume here.
-            var scratch = new Foreman.Sandbox.DockerSandbox(job.Id, request.Limits, $"agent-{request.Stack}");
-            await Proc.RunAsync("docker", ["rm", "-f", $"{scratch.Volume}-session"], timeout: TimeSpan.FromMinutes(1));
-            await scratch.RemoveAsync();
+            // Claude Code ends its MCP servers without a graceful shutdown, so the toolbox can't release what it
+            // holds (a sandbox container, a volume): the request's cleanup does it here.
+            if (request.Cleanup is not null) await request.Cleanup();
         }
         File.WriteAllText(Path.Combine(dir, "stream.jsonl"), r.Stdout, new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(dir, "stderr.log"), r.Stderr, new UTF8Encoding(false));
 
         var stream = ParseStream(r.Stdout);
-        var resultFile = Path.Combine(job.Dir, "environment", request.Stack, "agent-result.json");
-        var result = File.Exists(resultFile) ? Json.Read<AgentResult>(File.ReadAllText(resultFile)) : null;
-        var outcome = result?.Accepted is not null ? "accepted"
-            : result?.GaveUp is not null ? "gave_up"
-            : r.TimedOut ? "timed_out"
-            : stream.Subtype ?? (r.Ok ? "finished" : $"exit {r.ExitCode}");
+        var outcome = request.ReadOutcome?.Invoke()
+            ?? (r.TimedOut ? "timed_out" : null)
+            ?? stream.Subtype ?? (r.Ok ? "finished" : $"exit {r.ExitCode}");
         span?.SetTag("foreman.outcome", outcome);
 
-        return new AgentRunSummary(Name, model, outcome, stream.Turns, stream.ToolCalls, stream.CostUsd, CostIsEstimate: true,
+        return new AgentRunSummary(Name, runModel, outcome, stream.Turns, stream.ToolCalls, stream.CostUsd, CostIsEstimate: true,
             stream.Usage.Input, stream.Usage.Output, stream.Usage.CacheRead, stream.Usage.CacheWrite,
             Math.Round(clock.Elapsed.TotalSeconds, 1), request.System.Sha256,
             r.Ok ? null : r.Tail(5));
@@ -142,7 +141,7 @@ public sealed class ClaudeCodeEnvironmentDriver(string model = ApiEnvironmentDri
         var process = Environment.ProcessPath ?? throw new InvalidOperationException("cannot find the foreman executable");
         var name = Path.GetFileNameWithoutExtension(process);
         return name.Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-            ? (process, [typeof(ClaudeCodeEnvironmentDriver).Assembly.Location.Replace("Foreman.Agents.dll", "foreman.dll", StringComparison.Ordinal)])
+            ? (process, [typeof(ClaudeCodeDriver).Assembly.Location.Replace("Foreman.Agents.dll", "foreman.dll", StringComparison.Ordinal)])
             : (process, []);
     }
 }

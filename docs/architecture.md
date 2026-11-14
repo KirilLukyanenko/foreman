@@ -57,7 +57,7 @@ Model: Claude Haiku 5.5, structured output (`output_config.format`). Turns free 
 deliverables, constraints, deadline, budget, explicit and implicit acceptance criteria, task type (bug, feature,
 refactor, infrastructure, UI), unknowns, and a go/no-go estimate with risk. Gate: JSON schema.
 
-### 1. Recon (now: 1a–1e)
+### 1. Recon (now: 1a–1e built; security scans next)
 
 Recon is valuable on its own ("I understood your project in ten minutes") and is the first milestone.
 
@@ -111,18 +111,43 @@ JUnit XML or Jest JSON into one record per test. A test whose result differs bet
 the pass-to-pass gate; a test that fails every time is **known-red** and the implementer is not blamed for it.
 No runnable baseline means recon fails clearly, with the reason.
 
-**1d. Code map, no model (later in milestone 1).** Aider-style map: tree-sitter definitions and references,
-a file graph, PageRank personalised with the task's terms, cut to a token budget (1–4k). For C#, Roslyn
-`MSBuildWorkspace` gives exact symbols and the project graph. No vector index in v1: agentic grep is a strong
-baseline (Claude Code dropped RAG for it); Cursor measured +12.5% from adding semantic search, mostly on repos
-over 1,000 files. An embedding index is a later ablation, not a default.
+**1d. Code map, no model (built).** Aider's repository map, rebuilt in .NET: definitions and references per file,
+a file graph weighted by Aider's rules (names the task mentions ×10, long specific names ×10, private names and names
+defined in many files ×0.1), PageRank, rank flowing from files to the definitions they use, and the best definitions
+printed with signatures and line numbers until a token budget (3,000 by default) is full. Two extractors:
+- **C#: Roslyn**, with references resolved to the exact symbol (`T:Shop.Core.Order`, not every class named
+  `Order`). Safe on untrusted code because nothing runs: project files are read as XML (no MSBuild evaluation),
+  each project is a compilation of its own files against the framework and the projects it references, no
+  analyzers or source generators are loaded, nothing is restored or emitted.
+- **Everything else: tree-sitter** in the sandbox (`tools/codemap`, tree-sitter-language-pack with the grammars'
+  own tags queries, 15 languages), as the unprivileged user with no network: parsers are native code fed untrusted
+  input, so they stay off the host.
 
-**1e. Dossier (agent, later in milestone 1).** Four read-only readers in parallel (Claude Sonnet 5.5), each
-writing one section: architecture, conventions, where the task lives (files and symbols, as in
-[Agentless](https://arxiv.org/abs/2407.01489)), risks. The rules file for the implementer is **minimal**: exact
-commands, known-red and flaky tests, generated code not to touch, conventions from config, task paths. An ETH
-study (arXiv 2602.11988, ICLR 2026) found long generated context files lowered success and raised cost by over 20%.
-The long dossier is a document the agent reads on demand, not auto-loaded context.
+Generated files (by name and by marker) and vendored folders are left out of the map and listed for the rules file;
+test definitions rank at a quarter. With a task, a second map is personalised to it, and BM25 of the task over the
+files is saved as the task reader's first candidates. No vector index in v1: agentic search is a strong baseline
+(Claude Code dropped RAG for it); an embedding index is a later ablation.
+
+Measured on 10 real fixed issues (`foreman eval localization`, [results](../evals/localization/results.md)): for
+*finding the files a fix changes*, BM25 beats the map, and personalising the map (exact mentions, task words, BM25
+restart points) doesn't close the gap. The map is therefore context for agents (what exists and how it connects),
+not the localizer; localization is the task reader's job, starting from BM25's candidates.
+
+**1e. Dossier (built).** Four read-only readers in parallel (Claude Sonnet 5.5 by default), each writing one
+section: architecture, conventions, where the task lives (files and symbols, localized from the inside out as in
+[Agentless](https://arxiv.org/abs/2407.01489)), risks. Their tools: `list_files`, `read_file`, `search` (the
+non-backtracking regex engine, so a model's pattern can't hang it), `code_map` (re-ranked for any query),
+`find_symbol` (from the index) and `submit`. Paths are confined to the repository's files. `submit` is checked by
+code: every cited file and line, every `path:line` in the text, and every symbol named as a task location must
+exist; otherwise the problems go back to the reader (a third attempt is kept, with the problems shown as warnings).
+The readers run on either driver, through the same toolbox.
+
+The rules file for the implementer (`dossier/AGENTS.md`, outside the client repository) is **built by code, not
+written by a model**: the verified test command, the pass count, known-red and flaky tests, generated and vendored
+files and lockfiles not to edit, conventions from configuration (`.editorconfig`, `Directory.Build.props`,
+linters, commit style), and the task's top locations. An ETH study (arXiv 2602.11988, ICLR 2026) found long
+generated context files lowered success and raised cost by over 20%; the rules file stays at a few hundred tokens,
+and the long dossier is a document the agent reads on demand, not auto-loaded context.
 
 ### 2. Clarify (later)
 A separate under-specification detector, not a "please ask questions" prompt: in "Ask or Assume?" (EMNLP 2026

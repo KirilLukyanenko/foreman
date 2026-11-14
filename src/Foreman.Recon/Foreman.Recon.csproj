@@ -4,6 +4,14 @@
     <ProjectReference Include="..\Foreman.Sandbox\Foreman.Sandbox.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The code map extractor's image is built from these on first use. -->
+    <EmbeddedResource Include="..\..\tools\codemap\Dockerfile" LogicalName="codemap/Dockerfile" />
+    <EmbeddedResource Include="..\..\tools\codemap\extract.py" LogicalName="codemap/extract.py" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Foreman.Tests" />
   </ItemGroup>
 </Project>

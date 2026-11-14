@@ -7,34 +7,11 @@ using Foreman.Sandbox;
 
 namespace Foreman.Recon.Environment;
 
-/// <summary>Everything a driver needs to run the environment agent for one stack.</summary>
-public sealed record EnvironmentAgentRequest(
-    Job Job,
-    string Stack,
-    string StartImage,
-    Prompt System,
-    string Task,
-    IReadOnlyList<string> ExcludedPaths,
-    SandboxLimits? Limits);
-
-/// <summary>
-/// The model loop behind the environment agent. Drivers differ only in how they talk to the model; the tools, the
-/// sandbox and the verification are the same <see cref="EnvironmentTools"/>, and the outcome is always the
-/// <c>agent-result.json</c> those tools write.
-/// </summary>
-public interface IEnvironmentDriver
-{
-    string Name { get; }
-    string Model { get; }
-
-    Task<AgentRunSummary> RunAsync(EnvironmentAgentRequest request, CancellationToken ct);
-}
-
 /// <summary>
 /// Makes each stack build and run its tests, proven in a fresh copy. The deterministic plan goes first because it is
 /// free and fast; the agent is called only for what the plan can't do, so simple repositories cost nothing.
 /// </summary>
-public sealed class EnvironmentStage(ReconOptions options, IEnvironmentDriver? driver, Action<string>? log = null) : IStage
+public sealed class EnvironmentStage(ReconOptions options, IAgentDriver? driver, Action<string>? log = null, string? model = null, decimal? maxBudgetUsd = null) : IStage
 {
     /// <summary>Starting image for stacks the planner doesn't know: Debian with git, curl and compilers.</summary>
     public const string GenericImage = "buildpack-deps:bookworm";
@@ -107,23 +84,44 @@ public sealed class EnvironmentStage(ReconOptions options, IEnvironmentDriver? d
             return new StackEnvironment(stack, false, "needs the environment agent, which is not enabled (pass --agent)", null, deterministic, null, null);
 
         var prompt = Prompts.Load("environment", new Dictionary<string, string> { ["max_tool_calls"] = EnvironmentTools.MaxToolCalls.ToString(System.Globalization.CultureInfo.InvariantCulture) });
-        var request = new EnvironmentAgentRequest(job, stack, image, prompt, Task(triage, stack, image, context), triage.RemovedAgentConfig, options.Limits);
-        File.WriteAllText(Path.Combine(job.StageDir(Path.Combine(Name, stack)), "task.md"), request.Task, new UTF8Encoding(false));
+        var dir = job.StageDir(Path.Combine(Name, stack));
+        var resultFile = Path.Combine(dir, "agent-result.json");
+        if (File.Exists(resultFile)) File.Delete(resultFile);
+        var request = new AgentRequest(
+            Agent: "environment",
+            Job: job,
+            System: prompt,
+            Task: Task(triage, stack, image, context),
+            WorkDir: dir,
+            Toolbox: () => new EnvironmentTools(job, stack, triage.RemovedAgentConfig, null, options.Limits, image),
+            McpArgs: ["environment", "--job", job.Id, "--stack", stack, "--image", image],
+            Model: model,
+            MaxBudgetUsd: maxBudgetUsd,
+            ReadOutcome: () => EnvironmentTools.OutcomeOf(ReadResult(resultFile)),
+            // Claude Code ends its MCP server without a graceful shutdown, so the server can't clean up after itself.
+            Cleanup: async () =>
+            {
+                var scratch = new DockerSandbox(job.Id, options.Limits, $"agent-{stack}");
+                await Proc.RunAsync("docker", ["rm", "-f", $"{scratch.Volume}-session"], timeout: TimeSpan.FromMinutes(1));
+                await scratch.RemoveAsync();
+            });
+        File.WriteAllText(Path.Combine(dir, "task.md"), request.Task, new UTF8Encoding(false));
 
         // Pull before the agent starts, so its first tool call doesn't spend minutes on a download.
         await DockerSandbox.EnsureImageAsync(image);
-        log?.Invoke($"  {stack}: environment agent ({driver.Name}, {driver.Model}) starting on {image}");
+        log?.Invoke($"  {stack}: environment agent ({driver.Name}, {model ?? driver.Model}) starting on {image}");
         var summary = await driver.RunAsync(request, ct);
         job.Event(Name, "agent", summary);
         log?.Invoke($"  {stack}: agent finished: {summary.Outcome}, {summary.ToolCalls} tool calls, {summary.Turns} turns, ${summary.CostUsd:0.00}{(summary.CostIsEstimate ? " (estimate)" : "")}, {summary.Seconds:0} s");
 
-        var resultFile = Path.Combine(job.Dir, Name, stack, "agent-result.json");
-        var result = File.Exists(resultFile) ? Json.Read<AgentResult>(File.ReadAllText(resultFile)) : null;
+        var result = ReadResult(resultFile);
         if (result?.Accepted is { } spec)
             return new StackEnvironment(stack, true, null, spec, deterministic, result.Validation, summary);
         var reason = result?.GaveUp is { } g ? $"the agent gave up: {g}" : $"the agent finished without an accepted environment ({summary.Outcome}{(summary.Error is null ? "" : $": {summary.Error}")})";
         return new StackEnvironment(stack, false, reason, null, deterministic, null, summary);
     }
+
+    private static AgentResult? ReadResult(string file) => File.Exists(file) ? Json.Read<AgentResult>(File.ReadAllText(file)) : null;
 
     /// <summary>The first user message: the stack, what triage found, and what was tried. All of it is data.</summary>
     internal static string Task(TriageReport triage, string stack, string image, string context)

@@ -73,7 +73,7 @@ public class EnvironmentUnitTests
             {"type":"result","subtype":"success","num_turns":4,"total_cost_usd":0.4321,"usage":{"input_tokens":10,"output_tokens":2000,"cache_read_input_tokens":50000,"cache_creation_input_tokens":8000}}
             """;
 
-        var s = ClaudeCodeEnvironmentDriver.ParseStream(stream);
+        var s = ClaudeCodeDriver.ParseStream(stream);
 
         Assert.Equal(4, s.Turns);
         Assert.Equal(3, s.ToolCalls);

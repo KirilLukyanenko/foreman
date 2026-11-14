@@ -1,0 +1,887 @@
+{
+  "at": "2026-11-14T18:17:48.1864686Z",
+  "cases": 10,
+  "mapTokens": 3000,
+  "summary": [
+    {
+      "method": "bm25",
+      "recallAt1": 0.2,
+      "recallAt3": 0.4,
+      "recallAt5": 0.6,
+      "recallAt10": 0.65,
+      "hitAt5": 0.7,
+      "mrr": 0.3762594696969697
+    },
+    {
+      "method": "map, no task",
+      "recallAt1": 0.1,
+      "recallAt3": 0.2,
+      "recallAt5": 0.3,
+      "recallAt10": 0.4,
+      "hitAt5": 0.3,
+      "mrr": 0.19408860337185327,
+      "inMap": 0.7
+    },
+    {
+      "method": "map \u002B exact mentions",
+      "recallAt1": 0.1,
+      "recallAt3": 0.2,
+      "recallAt5": 0.4,
+      "recallAt10": 0.4,
+      "hitAt5": 0.4,
+      "mrr": 0.2170921298587058,
+      "inMap": 0.6
+    },
+    {
+      "method": "map \u002B task words",
+      "recallAt1": 0.1,
+      "recallAt3": 0.3,
+      "recallAt5": 0.4,
+      "recallAt10": 0.4,
+      "hitAt5": 0.4,
+      "mrr": 0.2139683971942036,
+      "inMap": 0.6
+    },
+    {
+      "method": "map seeded by bm25",
+      "recallAt1": 0.1,
+      "recallAt3": 0.2,
+      "recallAt5": 0.4,
+      "recallAt10": 0.5,
+      "hitAt5": 0.4,
+      "mrr": 0.21288787615359625,
+      "inMap": 0.6
+    },
+    {
+      "method": "bm25 \u002B map (RRF)",
+      "recallAt1": 0.2,
+      "recallAt3": 0.35,
+      "recallAt5": 0.6,
+      "recallAt10": 0.65,
+      "hitAt5": 0.7,
+      "mrr": 0.3551315789473684
+    },
+    {
+      "method": "task reader",
+      "recallAt1": 0.65,
+      "recallAt3": 0.9,
+      "recallAt5": 0.9,
+      "recallAt10": 0.9,
+      "hitAt5": 1,
+      "mrr": 0.9
+    },
+    {
+      "method": "task reader, then bm25",
+      "recallAt1": 0.65,
+      "recallAt3": 0.9,
+      "recallAt5": 0.9,
+      "recallAt10": 0.9,
+      "hitAt5": 1,
+      "mrr": 0.9
+    }
+  ],
+  "results": [
+    {
+      "id": "ardalis-GuardClauses-339",
+      "language": "C#",
+      "filesIndexed": 54,
+      "goldFiles": [
+        "src/GuardClauses/GuardAgainstExpressionExtensions.cs"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            24
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2939
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            20
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2939
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            12
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2863
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            8
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2994
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "App-vNext-Polly-2815",
+      "language": "C#",
+      "filesIndexed": 791,
+      "goldFiles": [
+        "src/Polly/Timeout/AsyncTimeoutEngine.cs",
+        "src/Polly/Timeout/TimeoutEngine.cs"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            27,
+            20
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            479,
+            389
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2994
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            52,
+            43
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2764
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            143,
+            146
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2040
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            60,
+            35
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2887
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            24,
+            12
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1,
+            2
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FluentValidation-FluentValidation-2240",
+      "language": "C#",
+      "filesIndexed": 215,
+      "goldFiles": [
+        "src/FluentValidation/DefaultValidatorOptions.cs",
+        "src/FluentValidation/Internal/CollectionPropertyRule.cs"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            8,
+            3
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            38,
+            52
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2990
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            45,
+            50
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2997
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            41,
+            28
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2978
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            19,
+            17
+          ],
+          "goldInMap": [
+            false,
+            false
+          ],
+          "mapTokens": 2925
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            8,
+            4
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1,
+            2
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "id": "jbogard-MediatR-1118",
+      "language": "C#",
+      "filesIndexed": 149,
+      "goldFiles": [
+        "src/MediatR/Registration/ServiceRegistrar.cs",
+        "src/MediatR/Wrappers/NotificationHandlerWrapper.cs"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            2,
+            63
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            18,
+            67
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2977
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            12,
+            90
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2997
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            11,
+            89
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2993
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            11,
+            92
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2995
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            3,
+            81
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1,
+            null
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1,
+            63
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unjs-defu-119",
+      "language": "TypeScript",
+      "filesIndexed": 6,
+      "goldFiles": [
+        "src/_utils.ts"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            4
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            3
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 326
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            2
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 326
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            3
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 326
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            3
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 326
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            3
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "honojs-hono-4325",
+      "language": "TypeScript",
+      "filesIndexed": 374,
+      "goldFiles": [
+        "src/router/reg-exp-router/node.ts",
+        "src/router/trie-router/node.ts"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            64,
+            101
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            26,
+            105
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2985
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            48,
+            69
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2997
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            31,
+            63
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2983
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            40,
+            82
+          ],
+          "goldInMap": [
+            true,
+            false
+          ],
+          "mapTokens": 2983
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            38,
+            85
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            2,
+            null
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            2,
+            101
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pallets-itsdangerous-375",
+      "language": "Python",
+      "filesIndexed": 15,
+      "goldFiles": [
+        "src/itsdangerous/signer.py"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            4
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            4
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2992
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            4
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2992
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            5
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2980
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            4
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2986
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            4
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "python-humanize-humanize-239",
+      "language": "Python",
+      "filesIndexed": 12,
+      "goldFiles": [
+        "src/humanize/filesize.py"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            3
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            6
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2096
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            5
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2096
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            3
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2096
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            5
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2096
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            4
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Textualize-rich-3577",
+      "language": "Python",
+      "filesIndexed": 213,
+      "goldFiles": [
+        "rich/ansi.py"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            33
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            38
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2991
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            47
+          ],
+          "goldInMap": [
+            false
+          ],
+          "mapTokens": 2998
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            42
+          ],
+          "goldInMap": [
+            false
+          ],
+          "mapTokens": 2954
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            58
+          ],
+          "goldInMap": [
+            false
+          ],
+          "mapTokens": 2992
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            40
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            2
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spf13-cobra-2240",
+      "language": "Go",
+      "filesIndexed": 36,
+      "goldFiles": [
+        "command.go"
+      ],
+      "goldNotIndexed": [],
+      "methods": [
+        {
+          "method": "bm25",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "map, no task",
+          "goldRanks": [
+            1
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2990
+        },
+        {
+          "method": "map \u002B exact mentions",
+          "goldRanks": [
+            1
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2982
+        },
+        {
+          "method": "map \u002B task words",
+          "goldRanks": [
+            1
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 2992
+        },
+        {
+          "method": "map seeded by bm25",
+          "goldRanks": [
+            1
+          ],
+          "goldInMap": [
+            true
+          ],
+          "mapTokens": 3000
+        },
+        {
+          "method": "bm25 \u002B map (RRF)",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader",
+          "goldRanks": [
+            1
+          ]
+        },
+        {
+          "method": "task reader, then bm25",
+          "goldRanks": [
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

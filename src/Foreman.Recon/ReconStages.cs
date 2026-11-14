@@ -7,7 +7,8 @@ using Foreman.Sandbox;
 
 namespace Foreman.Recon;
 
-public sealed record ReconOptions(int BaselineRuns = 3, string? Ref = null, SandboxLimits? Limits = null);
+/// <param name="Commit">Check out this exact commit (for evaluations: the commit before a known fix).</param>
+public sealed record ReconOptions(int BaselineRuns = 3, string? Ref = null, SandboxLimits? Limits = null, string? Commit = null);
 
 public sealed record FetchResult(string Source, string Commit, string? Ref, int Depth);
 
@@ -28,6 +29,11 @@ public sealed class FetchStage(ReconOptions options) : IStage
         var source = job.Manifest.Source;
         // A local path is cloned as a URL so that --depth applies and only committed files come along.
         var url = Directory.Exists(source) ? new Uri(Path.GetFullPath(source)).AbsoluteUri : source;
+        if (options.Commit is { } sha)
+        {
+            await FetchCommitAsync(job, url, sha, ct);
+            return;
+        }
         List<string> args =
         [
             "-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true",
@@ -42,6 +48,27 @@ public sealed class FetchStage(ReconOptions options) : IStage
         var commit = (await Proc.GitAsync(job.SourceDir, "rev-parse", "HEAD")).Trim();
         job.WriteJson(Name, "fetch.json", new FetchResult(source, commit, options.Ref, Depth));
         job.Event(Name, "cloned", new { commit });
+    }
+
+    /// <summary>One commit and the history before it, nothing after: init, fetch that commit shallow, check it out.</summary>
+    private async Task FetchCommitAsync(Job job, string url, string sha, CancellationToken ct)
+    {
+        Directory.CreateDirectory(job.SourceDir);
+        string[] safe = ["-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true"];
+        async Task Git(TimeSpan timeout, params string[] args)
+        {
+            var r = await Proc.RunAsync("git", [.. safe, .. args], job.SourceDir, timeout, ct: ct);
+            if (!r.Ok) throw new InvalidOperationException($"git {args[0]} failed: {r.Tail(5)}");
+        }
+        await Git(TimeSpan.FromMinutes(1), "init", "--quiet");
+        await Git(TimeSpan.FromMinutes(1), "config", "core.hooksPath", ".foreman-no-hooks");
+        await Git(TimeSpan.FromMinutes(10), "fetch", "--quiet", "--depth", Depth.ToString(), "--no-recurse-submodules", "--no-tags", url, sha);
+        await Git(TimeSpan.FromMinutes(5), "checkout", "--quiet", "--detach", "FETCH_HEAD");
+
+        var commit = (await Proc.GitAsync(job.SourceDir, "rev-parse", "HEAD")).Trim();
+        if (!commit.StartsWith(sha, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException($"fetched {commit}, expected {sha}");
+        job.WriteJson(Name, "fetch.json", new FetchResult(job.Manifest.Source, commit, null, Depth));
+        job.Event(Name, "cloned", new { commit, pinned = true });
     }
 }
 

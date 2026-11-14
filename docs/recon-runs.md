@@ -95,3 +95,67 @@ for prebuilt releases, because setup runs again in every verification and every 
 The second run also checked the cleanup fix: Claude Code ends its MCP servers without a graceful shutdown, so the
 first runs left their session containers and scratch volumes behind. The driver now removes them itself; after the
 rerun nothing was left.
+
+## 14 November 2026: code map, dossier, and the first localization eval
+
+### Code map, no model
+
+Roslyn for C# (exact symbol ids, nothing evaluated or run), tree-sitter in the sandbox for the rest.
+
+| Repository | Files parsed | Definitions | Time |
+|---|---|---|---|
+| ardalis/GuardClauses | 55 C# (2 projects) | 872 | 3 s |
+| comp-ledger | 37 C# | 657 | 4 s |
+| python-humanize/humanize | 13 Python | 115 | 4 s (14 s the first time: the extractor image is built once) |
+| unjs/defu | 9 TypeScript and JavaScript | 22 | 4 s |
+| App-vNext/Polly (eval) | 790 C#, 1 JavaScript | 7,229 | 24 s |
+
+The first GuardClauses map spent a third of its budget on `ThirdParty/JetBrains.Annotations.cs`: vendored code is
+now left out of the map (and listed as not to edit). Python signatures over several lines were cut at the opening
+parenthesis; they are now joined.
+
+### Localization on 10 real issues
+
+`foreman eval localization --readers`; details and caveats in [evals/localization](../evals/localization/README.md).
+
+| Method | Recall@1 | Recall@5 | Hit@5 | MRR |
+|---|---|---|---|---|
+| BM25 over files (SWE-bench's retrieval baseline) | 20% | 60% | 70% | 0.38 |
+| Code map, no task | 10% | 30% | 30% | 0.19 |
+| Code map + exact mentions (Aider's signals) | 10% | 40% | 40% | 0.22 |
+| Code map + task words | 10% | 40% | 40% | 0.21 |
+| Code map with BM25 as restart points | 10% | 40% | 40% | 0.21 |
+| BM25 + map, reciprocal-rank fusion | 20% | 60% | 70% | 0.36 |
+| **Task reader** (Sonnet 5.5, read-only tools) | **65%** | **90%** | **100%** | **0.90** |
+
+- No personalisation made the map competitive with BM25 at finding the fixed files: PageRank lifts files many
+  others depend on, and the fix is usually in a leaf. Tuning heuristics on ten cases would have been fitting the
+  test set, so the map stays what it is good for, context, and BM25's top files become the task reader's first
+  candidates.
+- The task reader put the fix's main file first in 9 of 10 cases, with 3–8 tool calls, 19–40 s and $0.06–0.18
+  each (Claude Code's list-price estimate on a subscription). Its misses are second files of two-file fixes.
+- Caveat: one run per case, and the fixes are public, so the model may know them. See the eval's README.
+
+**Bug found by the eval:** three readers (Polly, MediatR, rich) never started: the first message, with two code
+maps, was longer than the 32,767 characters of a Windows command line. The Claude Code driver now passes the task
+through stdin and the system prompt through `--system-prompt-file`.
+
+### Full dossier
+
+| Repository | Sections | Time | Tool calls | Cost (est.) | Dossier | Rules file |
+|---|---|---|---|---|---|---|
+| python-humanize/humanize | architecture (smoke test) | 28 s | 7 | $0.12 | 1,632 tokens | 242 tokens, 25 lines |
+| comp-ledger, run 1 | architecture, conventions, risks | 53 s | 30 | $0.63 | 5,684 tokens | 632 tokens |
+| comp-ledger, run 2 | the same | 38 s | 33 | $0.37 | 5,587 tokens | 533 tokens, 30 lines |
+| App-vNext/Polly (eval job) | architecture, conventions, risks, next to the eval's task section | 55 s | 40 | $0.52 | 5,532 tokens | 310 tokens |
+
+All sections were accepted on the first submission, with no warnings. comp-ledger's risks section found what its
+author would rank first: row-level security in Postgres that fails closed when the tenant isn't set, the
+advisory-lock ordering behind as-known-at reads, never editing applied DbUp migrations, and that 377 known-red
+integration tests mean most behaviour can't be verified without Docker. Every `path:line` in it was checked to exist.
+
+The first comp-ledger rules file listed ten long known-red test names (more than half its tokens); it now says
+"377, all in `compledger.integrationtests`" and quotes why from the environment agent's note.
+
+comp-ledger's accepted test script still ends with `exit 0` (from the environment run before the prompt said not
+to mask the exit code); the rules file shows it as it is. Rerunning that job's environment stage will replace it.

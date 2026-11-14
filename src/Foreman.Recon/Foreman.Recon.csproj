@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Foreman.Core\Foreman.Core.csproj" />
+    <ProjectReference Include="..\Foreman.Sandbox\Foreman.Sandbox.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Foreman.Tests" />
+  </ItemGroup>
+</Project>

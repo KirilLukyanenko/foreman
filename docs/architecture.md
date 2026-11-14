@@ -1,0 +1,194 @@
+# Foreman architecture
+
+Foreman takes a software task (a freelance job post, a ticket, an email) and a link to an unfamiliar repository,
+and drives AI agents to a verified change: a branch, a PR description in the repository's own style, and a report
+for the client, with the cost and time of every step. A human decides at three points: which questions go to the
+client, whether the spec is ready, and whether the result is sent.
+
+Status: design, 14 November 2026. Each capability below is marked **now** (in the first working version),
+**later** (planned, with the reason it waits) or **no** (considered and rejected, with the reason).
+
+## 1. Principles
+
+1. **A pipeline, not a chat of agents.** The orchestrator is ordinary code: a state machine. Each stage is one
+   agent (or none) with a narrow job, its own tools and permissions, and a file as its output. The next stage reads
+   files, not the previous agent's conversation. Parallel agents only read; exactly one agent writes code at a time.
+   Sources: Anthropic, [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents);
+   Cognition, [Don't build multi-agents](https://cognition.ai/blog/dont-build-multi-agents) and
+   [Multi-agents working](https://cognition.com/blog/multi-agents-working).
+2. **The agent never decides it is done.** Gates run by the orchestrator decide. A separate, skeptical reviewer
+   with no shared context checks the work against the spec
+   ([Anthropic harness design](https://www.anthropic.com/engineering/harness-design-long-running-apps)).
+3. **The task text and the repository are data, not instructions.** Nothing read from them can widen permissions.
+4. **Every number is measured and reproducible.** Model ids, CLI and SDK versions, image digests and prompt hashes
+   are recorded with every run. Failed runs stay in the log.
+5. **Deterministic first, model second.** Whatever can be detected or computed without a model is; the model gets
+   the hard part with the facts already gathered.
+
+## 2. Pipeline
+
+```
+ task text + repository
+        │
+ 0  Intake ─────────────▶ job.json           goal, deliverables, acceptance hints, task type, unknowns, go/no-go
+ 1  Recon
+    1a Triage (no model) ─▶ triage.json        stacks, CI commands, instruction files, install scripts, git facts
+                            security.json      secrets, vulnerable dependencies, SAST findings
+    1b Environment ──────▶ setup.sh, test.sh   agent makes the repo build and run its tests (RepoLaunch-style)
+    1c Baseline (no model) ▶ baseline.json     3 runs, network off: per-test pass/fail/flaky/known-red
+    1d Code map (no model) ▶ repomap.md        tree-sitter + PageRank, personalised to the task; Roslyn for C#
+    1e Dossier ──────────▶ dossier.md          4 read-only readers: architecture, conventions, task location, risks
+                            rules/AGENTS.md     minimal agent rules, kept outside the client repository
+ 2  Clarify ────────────▶ questions.md ─▶ [human sends to client, records answers]
+ 3  Spec ───────────────▶ PRP with a "done" contract per item ─▶ [human: Ready]
+ 4  Acceptance ─────────▶ hidden tests       separate session, sees only the PRP; tests are themselves tested
+        │  found gaps ─▶ back to 3
+ 5  Implement ──────────▶ N candidate branches   one writer per candidate, each in its own sandbox
+ 6  Verify (orchestrator) ▶ verify.json      pass-to-pass, fail-to-pass, lint, diff guard, scans, reviewer
+        │  fails ─▶ back to 5 with the findings, at most 2 rounds; then stop and report
+ 7  Select + Deliver ───▶ pr.md, report.md ─▶ [human: send]
+ 8  Metrics ────────────▶ runs.jsonl + traces
+```
+
+## 3. Stages
+
+### 0. Intake (now)
+Model: Claude Haiku 5.5, structured output (`output_config.format`). Turns free text into `job.json`: goal,
+deliverables, constraints, deadline, budget, explicit and implicit acceptance criteria, task type (bug, feature,
+refactor, infrastructure, UI), unknowns, and a go/no-go estimate with risk. Gate: JSON schema.
+
+### 1. Recon (now: 1a–1e)
+
+Recon is valuable on its own ("I understood your project in ten minutes") and is the first milestone.
+
+**1a. Triage, no model.**
+- Copy or clone the repository into the job's sandbox volume: shallow at the base commit, no future history
+  (agents have been caught reading the fix from later commits), submodules off, hooks off. Remove `.claude/`,
+  `.mcp.json` and other agent configuration from the copy the agents work in: Claude Code has had CVEs where a
+  repository's settings ran code before the trust dialog (CVE-2025-59536, CVE-2026-21852).
+- Detect stacks (.NET, Node, Python now; others reported as unsupported), SDK pins (`global.json`, `engines`,
+  `requires-python`), package managers and lockfiles, test frameworks and runners.
+- Read CI workflows: the `run:` steps are the best hint for the real build and test commands. Also
+  `.devcontainer/devcontainer.json`, Dockerfiles, compose files, `.tool-versions`, `mise.toml`.
+- Collect instruction files as data: `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.cursorrules`,
+  `.github/copilot-instructions.md`, `CONTRIBUTING*`, `.editorconfig`, analyzer and lint configs. Flag invisible
+  and bidirectional Unicode (the "rules file backdoor").
+- Flag install-time code before anything is installed: npm `preinstall`/`install`/`postinstall`/`prepare`,
+  `setup.py`, MSBuild `<Exec>`.
+- Git facts: commit style (conventional or not), age, activity.
+- Security (later in milestone 1): gitleaks over the tree and history, `osv-scanner` over lockfiles,
+  Opengrep for a fast SAST pass. All run in containers.
+
+**1b. Environment (agent).** Following [RepoLaunch](https://arxiv.org/abs/2603.05026) (build success on Linux:
+C# 92%, JS/TS 89%, Python 76%): Claude Code inside the container proposes `setup.sh` and `test.sh`, runs them, and
+fixes them until per-test results are visible and most tests pass. A separate call that sees only the command
+history verifies the result. Test commands prefer machine-readable reports. The deterministic plan from 1a is the
+starting point, so simple repositories need no agent at all. A human-supplied `setup.sh` overrides everything.
+
+**1c. Baseline, no model.** The test command runs 3 times with the network off. Results are parsed from TRX,
+JUnit XML or Jest JSON into one record per test. A test whose result differs between runs is **flaky** and leaves
+the pass-to-pass gate; a test that fails every time is **known-red** and the implementer is not blamed for it.
+No runnable baseline means recon fails clearly, with the reason.
+
+**1d. Code map, no model (later in milestone 1).** Aider-style map: tree-sitter definitions and references,
+a file graph, PageRank personalised with the task's terms, cut to a token budget (1–4k). For C#, Roslyn
+`MSBuildWorkspace` gives exact symbols and the project graph. No vector index in v1: agentic grep is a strong
+baseline (Claude Code dropped RAG for it); Cursor measured +12.5% from adding semantic search, mostly on repos
+over 1,000 files. An embedding index is a later ablation, not a default.
+
+**1e. Dossier (agent, later in milestone 1).** Four read-only readers in parallel (Claude Sonnet 5.5), each
+writing one section: architecture, conventions, where the task lives (files and symbols, as in
+[Agentless](https://arxiv.org/abs/2407.01489)), risks. The rules file for the implementer is **minimal**: exact
+commands, known-red and flaky tests, generated code not to touch, conventions from config, task paths. An ETH
+study (arXiv 2602.11988, ICLR 2026) found long generated context files lowered success and raised cost by over 20%.
+The long dossier is a document the agent reads on demand, not auto-loaded context.
+
+### 2. Clarify (later)
+A separate under-specification detector, not a "please ask questions" prompt: in "Ask or Assume?" (EMNLP 2026
+Findings) a detector raised the resolve rate on under-specified SWE-bench tasks from 61.2% to 69.4%, while a
+hard-coded ask prompt hurt some models. Every question carries a default answer so the client can reply "yes".
+During implementation the agent can ask through an `ask_client` MCP tool; the orchestrator answers from the spec
+and defaults or pauses the job for the human.
+
+### 3. Spec (later)
+The comp-ledger PRP template, extended with "what the repository already has" from the dossier, and a
+**done contract**: every item states how it will be verified.
+
+### 4. Acceptance tests (later)
+A separate session sees only the PRP and public interfaces and writes black-box tests outside the implementer's
+reach. The tests are tested: they must fail on the base commit, and they must catch a few deliberately broken
+versions of the code (mutants), so that they can't pass trivially. Their checksums are recorded.
+
+### 5. Implement (later)
+Claude Code headless (`claude -p --output-format stream-json`) in the sandbox, with explicit settings
+(the repository's own `.claude/` is not loaded), `--permission-mode dontAsk` and an allowlist, `--max-budget-usd`,
+`--max-turns`, and Foreman's MCP server (repo map, dossier, baseline, `ask_client`) through `--mcp-config`.
+LSP plugins give it go-to-definition and references. It writes its own visible reproduction test first, and the
+prompt tells it to stop and report if a test looks wrong (ImpossibleBench: this cut test hacking from 93% to 1%).
+
+**Parallel candidates (later, behind a flag):** N = 3–5 independent attempts, each with its own writer and
+sandbox. Claude 4's launch reported SWE-bench Verified 72.5% → 79.4% from parallel attempts filtered by regression
+tests and picked by a scorer.
+
+### 6. Verify (later)
+Run by the orchestrator, never by the agent:
+- **pass-to-pass:** every baseline test that passed (and isn't flaky) still passes;
+- **fail-to-pass:** the hidden acceptance tests pass;
+- the repository's own linter and formatter;
+- **diff guard:** edits to existing tests, CI config, lockfiles or test config fail the gate unless the spec allows
+  them; changes outside the located area need a reason in the PR;
+- gitleaks on the diff, osv-scanner if dependencies changed;
+- **reviewer** with fresh context, given only the spec and the diff, rule by rule (comp-ledger's reviewer). Its
+  findings pass through a scope filter before going back, so review can't pull in scope creep.
+
+At most 2 fix rounds; after that, restart in parallel or stop with an honest report.
+UI tasks (later): Playwright checks with screenshots attached to the PR; SWE-Lancer grades freelance work end to end.
+
+### 7. Select and deliver (later)
+Selection order: fail-to-pass, then pass-to-pass, then reviewer verdict, then an LLM judge as tie-break.
+Outputs: the PR description in the repository's style and a report for the client in their language (what was
+done, how it was checked, what is open, cost, time). Nothing is pushed or sent automatically.
+
+### 8. Metrics (now, grows with each stage)
+Every stage appends events (time, tokens, cache hits, cost, outcome) to the job's audit log; every run appends one
+line to `metrics/runs.jsonl`. Definitions are written before the first run, as in comp-ledger.
+
+## 4. Cross-cutting capabilities
+
+| Area | Decision | When |
+|---|---|---|
+| State | Own state machine. Each stage is idempotent and writes `jobs/<id>/<stage>/`; `state.json` records stage status; a stage reruns from its inputs. | now |
+| Durable workflow engine | Microsoft Agent Framework workflows (GA in .NET since April 2026, checkpointing and human-in-the-loop) is the upgrade path. Temporal: strongest durability, but heavy for one developer and no official .NET AI integration. Dapr Workflow: no. | later / no |
+| Sandbox | Docker, one named volume per job (the untrusted code never writes to the host), non-root user, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, wall-clock timeout. Network on only for setup, off for build and tests. | now |
+| Egress allowlist | A proxy that lets only package registries and the model API through during setup and implementation. | later |
+| Secrets | No keys, tokens or git credentials in the sandbox except the model credential the coding agent needs; the orchestrator applies the final patch. Traces record metadata, not content, by default. | now |
+| Tracing | OpenTelemetry with the GenAI semantic conventions (still "Development" status, version pinned): one trace per job, a span per stage; Anthropic C# SDK spans (`com.anthropic.sdk.csharp*`); Claude Code stream-json events turned into child spans. Local backend: .NET Aspire dashboard. | now (spans), later (exporters) |
+| Cost | Usage including cache reads and writes on every call; cost per completed task, not per request. | now |
+| Prompts | Prompts are files in the repository; their content hash is recorded on spans and in eval results. | now |
+| Models | Pinned ids. Defaults: Opus 5.5 for clarify, spec and review; Sonnet 5.5 for readers; Haiku 5.5 for intake and reports; Claude Code's default for implementation. Effort set per stage. "Stronger model at lower effort" is measured before any cascade. | now |
+| Claude API features | Structured outputs, prompt caching (stable prefix: system prompt, tool list, dossier), adaptive thinking with explicit effort, refusal handling with server-side fallbacks, Batch API for eval sweeps. Context editing and compaction only if an API-side loop gets long. No sampling parameters exist any more, so reproducibility comes from repeated runs and confidence intervals. | now / later |
+| Budgets and kill switch | Per stage and per job: dollars, turns, wall clock; a global cap; a flag that disables the coding stage. | now |
+| MCP | Foreman's own MCP server (C# SDK 2.x, spec 2026-07-28) gives the coding agent recon tools and `ask_client`. | later |
+| A2A | No: no agents from other vendors to talk to; worth a mention, not the complexity. | no |
+| Claude Managed Agents | No for now: the point is to show our own sandbox and loop. Mention as the hosted alternative. | no |
+| Evals | Per-stage offline harness with fixed inputs; code graders first (tests), model graders second, calibrated against human labels; 3–5 runs per case; pass@1, pass@k, pass^k with Wilson intervals; paired comparison between versions; a smoke set on every PR and the full set nightly. Ablations: reviewer on/off, N candidates, repo map on/off. | milestone 4 |
+| Eval data | SWE-bench Verified is retired as a headline (OpenAI's audit, February 2026). Use fresh, decontaminated tasks (SWE-rebench), SWE-bench Pro public, and SWE-Lancer-style tasks graded end to end, in .NET, TypeScript and Python. | milestone 4 |
+| Red team | Prompt-injection cases in the eval set: instructions planted in README, issue text and rules files. | milestone 4 |
+
+## 5. Milestones
+
+1. **Recon**: triage, environment, baseline, code map, dossier, security scans, on five real repositories.
+2. **Intake, clarify, spec**: from task text to a Ready PRP with a done contract.
+3. **Implement and verify**: one candidate, the full gate, the reviewer, the fix loop.
+4. **Acceptance tests, parallel candidates, evals**: hidden tests with mutants, N candidates with selection, the
+   eval harness with ablations, README with the numbers.
+5. **Deliver and Tower**: PR and client report, approvals from the phone, one real task end to end.
+
+## 6. Defaults chosen without the owner (change any of them)
+
+- Name: Foreman (working name).
+- Orchestrator: own state machine in .NET 10; Microsoft Agent Framework later if needed.
+- Sandbox: Docker on the owner's PC (Docker Desktop on WSL 2); a VM later.
+- First stacks: .NET, TypeScript/Node, Python.
+- Repository private until the first milestone is done and scanned with gitleaks.
+- Code and docs in English (public portfolio); progress notes for the owner in Russian on the Tower map.

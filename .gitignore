@@ -1,0 +1,14 @@
+bin/
+obj/
+artifacts/
+TestResults/
+.vs/
+.idea/
+*.user
+.env
+*.env
+appsettings.*.local.json
+.claude/settings.local.json
+# Job folders hold client code and logs: never commit them.
+jobs/
+.foreman/

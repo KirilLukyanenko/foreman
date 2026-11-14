@@ -37,15 +37,22 @@ RUN set -eu; cd /tmp \
     && cp "sast-rules-v${RULES_VERSION}/LICENSE" /opt/rules/LICENSE \
     && rm -rf rules.tgz "sast-rules-v${RULES_VERSION}"
 
+# Opengrep unpacks its runtime (about 250 MB) into $XDG_CACHE_HOME on first use. Unpacked once here, readable by the
+# scan user, instead of into every job's home folder on every scan.
+ENV XDG_CACHE_HOME=/opt/cache
+
 # Drop the rules this Opengrep version can't parse (6 of 341 in sast-rules 2.10.1 with Opengrep 1.33.1): one broken
 # rule otherwise turns every scan into a partial failure. The dropped ones are listed in each report.
 RUN mkdir -p /opt/security /tmp/empty \
+    && opengrep --version > /dev/null \
     && find /opt/rules -name "*.yml" | sort \
        | xargs -P 8 -I{} sh -c 'opengrep scan --validate --disable-version-check --config "{}" /tmp/empty >/dev/null 2>&1 || echo "{}"' \
        | sort > /opt/security/dropped-rules.txt \
     && xargs -r rm -f < /opt/security/dropped-rules.txt \
     && sed -i "s|^/opt/rules/||" /opt/security/dropped-rules.txt \
-    && rmdir /tmp/empty
+    && rmdir /tmp/empty \
+    && rm -rf /root/.opengrep \
+    && chmod -R a+rX /opt/cache
 
 COPY scan.sh /opt/security/scan.sh
 COPY update-osv.sh /opt/security/update-osv.sh

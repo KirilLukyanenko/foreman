@@ -17,7 +17,11 @@ public sealed record SandboxLimits(double Cpus = 4, string Memory = "6g", int Pi
 }
 
 /// <summary>A script to run in the sandbox. It writes files it wants to keep to <c>$OUT</c>.</summary>
-public sealed record SandboxRun(string Image, string Script, Network Network, TimeSpan Timeout, IReadOnlyDictionary<string, string>? Env = null);
+/// <param name="AsRoot">
+/// Install steps may need system packages (apt). They run as root with only the capabilities a package manager
+/// needs; builds and tests always run as the unprivileged user with none.
+/// </param>
+public sealed record SandboxRun(string Image, string Script, Network Network, TimeSpan Timeout, IReadOnlyDictionary<string, string>? Env = null, bool AsRoot = false);
 
 /// <summary>
 /// One Docker volume per job holds the repository copy (<c>/work/repo</c>), a home directory with package caches
@@ -36,9 +40,13 @@ public sealed class DockerSandbox
     private readonly SandboxLimits _limits;
     private int _runs;
 
-    public DockerSandbox(string jobId, SandboxLimits? limits = null)
+    /// <summary>Capabilities a package manager needs as root (dpkg sets owners and modes; apt drops to its own user).</summary>
+    public static readonly string[] InstallCapabilities = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETUID", "SETGID"];
+
+    /// <param name="suffix">Separate volumes of one job: the agent's scratch copy, a validation copy.</param>
+    public DockerSandbox(string jobId, SandboxLimits? limits = null, string? suffix = null)
     {
-        Volume = "foreman-" + jobId.ToLowerInvariant();
+        Volume = "foreman-" + jobId.ToLowerInvariant() + (suffix is null ? "" : "-" + suffix);
         _limits = limits ?? SandboxLimits.Default;
     }
 
@@ -93,22 +101,20 @@ public sealed class DockerSandbox
 
     /// <summary>
     /// Runs a bash script in the repository folder, then copies what it wrote to <c>$OUT</c> into
-    /// <paramref name="hostOutDir"/>.
+    /// <paramref name="hostOutDir"/>. With <paramref name="commitAs"/>, a successful run's container is saved as that
+    /// image: setup steps install system packages outside the volume, and only a snapshot keeps them for the test runs
+    /// (the "setup script, then snapshot" pattern of Codex, Jules and Copilot).
     /// </summary>
-    public async Task<ProcResult> RunAsync(SandboxRun run, string hostOutDir, CancellationToken ct = default)
+    public async Task<ProcResult> RunAsync(SandboxRun run, string hostOutDir, CancellationToken ct = default, string? commitAs = null)
     {
         var id = $"{Interlocked.Increment(ref _runs)}-{Guid.NewGuid().ToString("N")[..6]}";
         var name = $"{Volume}-{id}";
         var outPath = $"{OutRoot}/{id}";
         List<string> args =
         [
-            "run", "--rm", "--name", name,
-            "--user", Uid,
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges",
-            "--pids-limit", _limits.Pids.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--memory", _limits.Memory,
-            "--cpus", _limits.Cpus.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "run", .. (commitAs is null ? new[] { "--rm" } : []), "--name", name,
+            .. PrivilegeArgs(run.AsRoot),
+            .. LimitArgs(_limits),
             "--network", run.Network == Network.None ? "none" : "bridge",
             "-e", $"HOME={HomePath}",
             "-e", $"OUT={outPath}",
@@ -117,6 +123,7 @@ public sealed class DockerSandbox
             "-e", "DOTNET_NOLOGO=1",
             "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
             "-e", "PIP_DISABLE_PIP_VERSION_CHECK=1",
+            "-e", "DEBIAN_FRONTEND=noninteractive",
             "-v", $"{Volume}:/work",
             "-w", RepoPath,
         ];
@@ -127,9 +134,24 @@ public sealed class DockerSandbox
         if (result.TimedOut)
             await Proc.RunAsync("docker", ["kill", name], timeout: TimeSpan.FromSeconds(30), ct: CancellationToken.None);
 
+        if (commitAs is not null)
+        {
+            if (result.Ok)
+            {
+                var commit = await Proc.RunAsync("docker", ["commit", name, commitAs], timeout: TimeSpan.FromMinutes(10), ct: CancellationToken.None);
+                if (!commit.Ok) throw new InvalidOperationException($"saving the setup snapshot failed: {commit.Tail(5)}");
+            }
+            await Proc.RunAsync("docker", ["rm", "-f", name], timeout: TimeSpan.FromMinutes(1), ct: CancellationToken.None);
+        }
+
         await CopyOutAsync(outPath, hostOutDir, run.Image);
         return result;
     }
+
+    /// <summary>Image name for a setup snapshot of this volume.</summary>
+    public string SnapshotTag(string label) => $"foreman-env/{Volume}:{label.ToLowerInvariant()}";
+
+    public static Task RemoveImageAsync(string image) => Proc.RunAsync("docker", ["rmi", "-f", image], timeout: TimeSpan.FromMinutes(2));
 
     private async Task CopyOutAsync(string containerPath, string hostDir, string image)
     {
@@ -147,7 +169,33 @@ public sealed class DockerSandbox
         }
     }
 
+    /// <summary>Gives every file in the volume back to the unprivileged user, after a step that ran as root.</summary>
+    public async Task ResetOwnershipAsync(string image)
+    {
+        var r = await Proc.RunAsync("docker",
+            ["run", "--rm", "--network", "none", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
+             "-v", $"{Volume}:/work", image, "chown", "-R", Uid, "/work"],
+            timeout: TimeSpan.FromMinutes(10));
+        if (!r.Ok) throw new InvalidOperationException($"resetting ownership failed: {r.Tail(5)}");
+    }
+
     public async Task RemoveAsync() => await Proc.RunAsync("docker", ["volume", "rm", "-f", Volume]);
+
+    internal static IEnumerable<string> PrivilegeArgs(bool asRoot)
+    {
+        if (!asRoot) return ["--user", Uid, "--cap-drop", "ALL"];
+        List<string> args = ["--user", "0:0", "--cap-drop", "ALL"];
+        foreach (var cap in InstallCapabilities) args.AddRange(["--cap-add", cap]);
+        return args;
+    }
+
+    internal static IEnumerable<string> LimitArgs(SandboxLimits limits) =>
+    [
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", limits.Pids.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        "--memory", limits.Memory,
+        "--cpus", limits.Cpus.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    ];
 
     private static async Task Docker(params string[] args)
     {

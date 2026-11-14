@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Foreman.Recon\Foreman.Recon.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Anthropic" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Foreman.Tests" />
+  </ItemGroup>
+</Project>

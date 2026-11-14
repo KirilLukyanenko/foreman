@@ -4,6 +4,6 @@
     <AssemblyName>foreman</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Foreman.Recon\Foreman.Recon.csproj" />
+    <ProjectReference Include="..\Foreman.Agents\Foreman.Agents.csproj" />
   </ItemGroup>
 </Project>

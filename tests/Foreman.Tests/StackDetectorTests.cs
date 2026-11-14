@@ -137,3 +137,29 @@ public class PythonGroupsTests
         Assert.Contains("--junitxml=\"$OUT/pytest.xml\"", plan.TestScript);
     }
 }
+
+public class PythonDottedKeysTests
+{
+    [Fact]
+    public void Dotted_optional_dependencies_and_requirements_filter()
+    {
+        using var repo = new TempRepo(
+            ("pyproject.toml", """
+                [project]
+                name = "humanize"
+                optional-dependencies.tests = [
+                  "freezegun",
+                  "pytest",
+                ]
+                """),
+            ("requirements-mypy.txt", "mypy"),
+            ("requirements-dev.txt", "pytest"),
+            ("docs/requirements.txt", "mkdocs"),
+            ("tests/test_x.py", ""));
+
+        var s = Foreman.Recon.Triage.StackDetector.Python(Foreman.Recon.Triage.RepoFiles.Scan(repo.Root))!;
+
+        Assert.Equal(["tests"], s.TestExtras);
+        Assert.Equal(["requirements-dev.txt"], s.RequirementsFiles);
+    }
+}

@@ -7,7 +7,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Foreman.Recon\Foreman.Recon.csproj" />
+    <ProjectReference Include="..\..\src\Foreman.Agents\Foreman.Agents.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

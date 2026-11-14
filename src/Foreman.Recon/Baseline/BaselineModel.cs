@@ -86,6 +86,7 @@ public sealed record StackBaseline(
     string? TestCommand,
     IReadOnlyList<StepResult> TestRuns,
     VerdictCounts? Counts,
-    string? TestsFile);
+    string? TestsFile,
+    string? EnvImage = null);
 
 public sealed record BaselineReport(int Runs, IReadOnlyList<StackBaseline> Stacks);

@@ -191,16 +191,24 @@ public static partial class StackDetector
             files.All.Any(f => TestFileRegex().IsMatch(Path.GetFileName(f))) ? "unittest" : null;
 
         // Extras (pip install .[tests]) and dependency groups (PEP 735, uv sync --group tests) install differently.
-        List<string> TestKeys(string section) =>
-            TomlKeyRegex().Matches(TomlSection(pyproject, section)).Select(m => m.Groups[1].Value)
+        // TOML allows both a table ([project.optional-dependencies] tests = ...) and a dotted key inside [project]
+        // (optional-dependencies.tests = ...).
+        List<string> TestKeys(string table, string dottedPrefix) =>
+            TomlKeyRegex().Matches(TomlSection(pyproject, table)).Select(m => m.Groups[1].Value)
+                .Concat(Regex.Matches(pyproject, $@"^\s*{Regex.Escape(dottedPrefix)}\.([A-Za-z0-9_-]+)\s*=", RegexOptions.Multiline).Select(m => m.Groups[1].Value))
                 .Where(k => TestExtraRegex().IsMatch(k)).Distinct().ToList();
 
         return new PythonStack(
             manifests, manager, version, framework,
-            manifests.Where(f => RequirementsRegex().IsMatch(Path.GetFileName(f))).ToList(),
-            TestKeys("project.optional-dependencies"),
-            TestKeys("dependency-groups"));
+            manifests.Where(f => RequirementsRegex().IsMatch(Path.GetFileName(f)) && IsInstallableRequirements(f)).ToList(),
+            TestKeys("project.optional-dependencies", "optional-dependencies"),
+            TestKeys("dependency-groups", "dependency-groups"));
     }
+
+    /// <summary>Requirements for running the code or its tests; docs, lint and type-check sets are left out.</summary>
+    internal static bool IsInstallableRequirements(string path) =>
+        !path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
+        && !Regex.IsMatch(Path.GetFileName(path), "doc|lint|mypy|typing|type|format|style|release|pre-commit", RegexOptions.IgnoreCase);
 
     /// <summary>The body of a TOML table, up to the next table header. Enough for key names; not a TOML parser.</summary>
     internal static string TomlSection(string toml, string table)

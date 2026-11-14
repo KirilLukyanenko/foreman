@@ -3,6 +3,7 @@
     <Project Path="src/Foreman.Core/Foreman.Core.csproj" />
     <Project Path="src/Foreman.Sandbox/Foreman.Sandbox.csproj" />
     <Project Path="src/Foreman.Recon/Foreman.Recon.csproj" />
+    <Project Path="src/Foreman.Agents/Foreman.Agents.csproj" />
     <Project Path="src/Foreman.Cli/Foreman.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

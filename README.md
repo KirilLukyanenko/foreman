@@ -10,26 +10,33 @@ The design, and what was taken from published coding agents and research, is in
 
 ## Status
 
-Milestone 1, recon, in progress. Working now, without a model:
+Milestone 1, recon, in progress. Working now:
 
 | Stage | What it does | Output |
 |---|---|---|
 | fetch | Shallow clone (200 commits, nothing after the base commit), no submodules, hooks off | `fetch/fetch.json` |
-| triage | Stacks (.NET, Node, Python), SDK pins, test frameworks, CI commands, instruction files (with a hidden-Unicode check), install-time code, git style | `triage/triage.json` |
-| baseline | Copies the repository into a per-job Docker volume (without its agent configuration), installs and builds, then runs the tests 3 times with the network off; test names with run-time values are normalised | `baseline/baseline.json`, per-test verdicts |
+| triage | Stacks (.NET, Node, Python; others reported), SDK pins, test frameworks, CI commands, instruction files (with a hidden-Unicode check), install-time code, git style. No model. | `triage/triage.json` |
+| environment | The deterministic plan first, verified in a fresh copy. Only if it has nothing, or fewer than half of the tests pass, the **environment agent** works in the sandbox with four tools (`run`, `use_image`, `submit`, `give_up`) until a fresh-copy verification accepts its setup and test scripts | `environment/environment.json`, `tools.jsonl` |
+| baseline | Sets the accepted environment up again from scratch (snapshotting system packages), keeps the snapshot as the job's environment image, runs the tests 3 times with the network off; test names with run-time values are normalised. No model. | `baseline/baseline.json`, per-test verdicts |
 
-First runs on five real repositories (.NET, TypeScript, Python): [docs/recon-runs.md](docs/recon-runs.md).
+Runs so far, failures and fixes included: [docs/recon-runs.md](docs/recon-runs.md). Nine repositories in .NET,
+TypeScript, JavaScript, Python, Go and Rust; the agent was needed for three of them and took 3–4 tool calls and
+under 90 seconds each.
 
-Next: the environment agent for repositories the deterministic plan can't build, the code map, the dossier
-readers, security scans.
+The environment agent has two interchangeable model loops over the same tools: `api` (our own loop on the
+Anthropic C# SDK, with prompt caching, effort and refusal fallbacks; needs an API key, not run yet) and
+`claude-code` (Claude Code headless on a subscription, built-in tools off, the sandbox tools through Foreman's MCP
+server). The model never runs anything on the host.
+
+Next: the code map, the dossier readers, security scans.
 
 ## Run
 
-Requires .NET 10 SDK, Docker, git.
+Requires .NET 10 SDK, Docker, git; for the agent, Claude Code (`claude`) signed in, or `ANTHROPIC_API_KEY`.
 
 ```bash
-dotnet run --project src/Foreman.Cli -- recon <repo path or git url> [--task task.md] [--ref branch] [--runs 3]
-dotnet run --project src/Foreman.Cli -- recon --job <id> --force baseline     # rerun one stage
+dotnet run --project src/Foreman.Cli -- recon <repo path or git url> [--agent auto|claude-code|api|none] [--model claude-opus-5-5] [--budget 10]
+dotnet run --project src/Foreman.Cli -- recon --job <id> --force environment,baseline     # rerun stages
 dotnet run --project src/Foreman.Cli -- show <id>
 ```
 

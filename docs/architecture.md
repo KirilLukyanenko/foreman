@@ -79,13 +79,34 @@ Recon is valuable on its own ("I understood your project in ten minutes") and is
 - Security (later in milestone 1): gitleaks over the tree and history, `osv-scanner` over lockfiles,
   Opengrep for a fast SAST pass. All run in containers.
 
-**1b. Environment (agent).** Following [RepoLaunch](https://arxiv.org/abs/2603.05026) (build success on Linux:
-C# 92%, JS/TS 89%, Python 76%): Claude Code inside the container proposes `setup.sh` and `test.sh`, runs them, and
-fixes them until per-test results are visible and most tests pass. A separate call that sees only the command
-history verifies the result. Test commands prefer machine-readable reports. The deterministic plan from 1a is the
-starting point, so simple repositories need no agent at all. A human-supplied `setup.sh` overrides everything.
+**1b. Environment (built).** Following [RepoLaunch](https://arxiv.org/abs/2603.05026) (build success on Linux:
+C# 92%, JS/TS 89%, Python 76%), with one change: verification is code, not a second model.
 
-**1c. Baseline, no model.** The test command runs 3 times with the network off. Results are parsed from TRX,
+1. The deterministic plan from triage runs first, in a fresh copy. If it yields per-test results, no model is used.
+2. Otherwise the environment agent gets four tools and nothing else:
+   `run` (a command in a long-running sandbox container, root, network on), `use_image` (switch to another official
+   image), `submit` (setup script + test script) and `give_up`. The model never touches the host.
+3. `submit` is verification: Foreman runs the setup script from scratch in a fresh copy of the repository (root,
+   network on), saves the container as an image (the "setup script, then snapshot" pattern of Codex, Jules and
+   Copilot: system packages live outside the volume), then runs the test script on that snapshot as an
+   unprivileged user with the network off, and parses the report. Accepted only with per-test results; if fewer
+   than half pass, the agent must say why the failures are not about the environment. A setup that only worked
+   because of something done by hand in the session fails here.
+4. Two interchangeable model loops ("drivers") behind the same tools:
+   - **api**: our own loop on the Anthropic C# SDK: prompt caching on the system prompt and tools, effort per
+     stage, server-side refusal fallbacks, thinking blocks returned unchanged, OpenTelemetry GenAI spans.
+   - **claude-code**: Claude Code headless on a subscription, with all built-in tools disabled (`--tools ""`, an
+     explicit deny list, `dontAsk`), our system prompt instead of its own, no user or project settings, an empty
+     working folder, and the four tools served by Foreman's own MCP server (`foreman mcp-environment`, stdio).
+   The same task can run on both, which makes them an ablation, not a lock-in.
+5. Every tool call is logged (`tools.jsonl`), the prompt is a file whose hash is recorded, and the run summary keeps
+   turns, tool calls, tokens, cache reads and writes, cost (estimated for the subscription driver) and time.
+
+A human-supplied setup script will override everything (later).
+
+**1c. Baseline, no model (built).** The accepted environment is set up once more from scratch (which shows it is
+reproducible), its last snapshot is kept as the job's environment image for the later stages, and the test command
+runs 3 times with the network off. Results are parsed from TRX,
 JUnit XML or Jest JSON into one record per test. A test whose result differs between runs is **flaky** and leaves
 the pass-to-pass gate; a test that fails every time is **known-red** and the implementer is not blamed for it.
 No runnable baseline means recon fails clearly, with the reason.

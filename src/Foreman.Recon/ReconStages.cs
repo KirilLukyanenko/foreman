@@ -1,5 +1,6 @@
 using Foreman.Core;
 using Foreman.Recon.Baseline;
+using Foreman.Recon.Environment;
 using Foreman.Recon.Reports;
 using Foreman.Recon.Triage;
 using Foreman.Sandbox;
@@ -22,7 +23,7 @@ public sealed class FetchStage(ReconOptions options) : IStage
 
     public async Task RunAsync(Job job, CancellationToken ct)
     {
-        if (Directory.Exists(job.SourceDir)) Directory.Delete(job.SourceDir, recursive: true);
+        Dirs.Delete(job.SourceDir);
 
         var source = job.Manifest.Source;
         // A local path is cloned as a URL so that --depth applies and only committed files come along.
@@ -83,8 +84,9 @@ public sealed class TriageStage : IStage
 }
 
 /// <summary>
-/// Builds the repository in the sandbox and runs its tests N times with the network off, so we know which tests
-/// pass before anything changes, which fail already, and which can't be trusted.
+/// Runs what the environment stage proved, in a fresh volume: setup, then the tests N times with the network off,
+/// so we know which tests pass before anything changes, which fail already, and which can't be trusted.
+/// Running setup again from scratch is deliberate: it shows the environment is reproducible, not a one-off.
 /// </summary>
 public sealed class BaselineStage(ReconOptions options, Action<string>? log = null) : IStage
 {
@@ -93,28 +95,26 @@ public sealed class BaselineStage(ReconOptions options, Action<string>? log = nu
     public async Task RunAsync(Job job, CancellationToken ct)
     {
         var triage = job.ReadJson<TriageReport>("triage", "triage.json");
-        var plans = BaselinePlanner.Plan(triage);
-        if (plans.Count == 0)
-            throw new InvalidOperationException(triage.UnsupportedStacks.Count > 0
-                ? $"no supported stack; found {string.Join(", ", triage.UnsupportedStacks)}"
-                : "no build stack detected");
+        var environment = job.ReadJson<EnvironmentReport>("environment", "environment.json");
+        var ready = environment.Stacks.Where(s => s is { Ready: true, Spec: not null }).Select(s => s.Spec!).ToList();
+        if (ready.Count == 0) throw new InvalidOperationException("no stack has a working environment: see environment/environment.json");
 
         await DockerSandbox.EnsureDockerAsync();
         var sandbox = new DockerSandbox(job.Id, options.Limits);
         var digests = new Dictionary<string, string>();
-        foreach (var image in plans.Where(p => p.Unsupported is null).Select(p => p.Image).Distinct())
+        foreach (var image in ready.Select(s => s.Image).Distinct())
         {
             log?.Invoke($"  image {image}");
             digests[image] = await DockerSandbox.EnsureImageAsync(image);
         }
 
         log?.Invoke($"  copying the repository into volume {sandbox.Volume}");
-        await sandbox.PopulateAsync(job.SourceDir, plans.First(p => p.Unsupported is null).Image, triage.RemovedAgentConfig);
+        await sandbox.PopulateAsync(job.SourceDir, ready[0].Image, triage.RemovedAgentConfig);
         job.Event(Name, "sandbox-ready", new { volume = sandbox.Volume, removed = triage.RemovedAgentConfig });
 
         var stacks = new List<StackBaseline>();
-        foreach (var plan in plans)
-            stacks.Add(await RunStackAsync(job, sandbox, plan, digests.GetValueOrDefault(plan.Image), ct));
+        foreach (var spec in ready)
+            stacks.Add(await RunStackAsync(job, sandbox, spec, digests.GetValueOrDefault(spec.Image), ct));
 
         job.WriteJson(Name, "baseline.json", new BaselineReport(options.BaselineRuns, stacks));
         if (stacks.All(s => s.Status != StackStatus.Ok))
@@ -122,50 +122,52 @@ public sealed class BaselineStage(ReconOptions options, Action<string>? log = nu
                 string.Join("; ", stacks.Select(s => $"{s.Stack}: {s.Status}{(s.Reason is null ? "" : $" ({s.Reason})")}")));
     }
 
-    private async Task<StackBaseline> RunStackAsync(Job job, DockerSandbox sandbox, StackPlan plan, string? digest, CancellationToken ct)
+    private async Task<StackBaseline> RunStackAsync(Job job, DockerSandbox sandbox, EnvironmentSpec spec, string? digest, CancellationToken ct)
     {
-        var dir = job.StageDir(Path.Combine(Name, plan.Stack));
-        if (plan.Unsupported is not null)
-            return new StackBaseline(plan.Stack, plan.Image, null, StackStatus.Unsupported, plan.Unsupported, plan.Notes, [], null, [], null, null);
-
+        var dir = job.StageDir(Path.Combine(Name, spec.Stack));
         var steps = new List<StepResult>();
-        foreach (var step in plan.Setup)
+        // Setup steps chain through snapshots; the last one is the job's environment image, kept for later stages.
+        var image = spec.Image;
+        string? previous = null;
+        foreach (var step in spec.Setup)
         {
-            log?.Invoke($"  {plan.Stack}: {step.Name} (network {step.Network.ToString().ToLowerInvariant()})");
-            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, step.Script, step.Network, step.Timeout, plan.Env), Path.Combine(dir, step.Name), ct);
-            steps.Add(Record(job, plan.Stack, step.Name, step.Network, r, dir));
+            var network = step.Network ? Network.Open : Network.None;
+            var snapshot = sandbox.SnapshotTag($"{spec.Stack}-{step.Name}");
+            log?.Invoke($"  {spec.Stack}: {step.Name} (network {(step.Network ? "open" : "none")}{(step.AsRoot ? ", root" : "")})");
+            var r = await sandbox.RunAsync(new SandboxRun(image, step.Script, network, TimeSpan.FromMinutes(step.TimeoutMinutes), spec.Env, step.AsRoot), Path.Combine(dir, step.Name), ct, commitAs: snapshot);
+            steps.Add(Record(job, spec.Stack, step.Name, network, r, dir));
             if (!r.Ok)
             {
-                var reason = r.TimedOut ? $"{step.Name} timed out after {step.Timeout.TotalMinutes} min" : $"{step.Name} exited with {r.ExitCode}";
-                return new StackBaseline(plan.Stack, plan.Image, digest, StackStatus.SetupFailed, reason, plan.Notes, steps, plan.TestScript, [], null, null);
+                var reason = r.TimedOut ? $"{step.Name} timed out after {step.TimeoutMinutes} min" : $"{step.Name} exited with {r.ExitCode}";
+                return new StackBaseline(spec.Stack, spec.Image, digest, StackStatus.SetupFailed, reason, spec.Notes, steps, spec.TestScript, [], null, null);
             }
+            if (previous is not null) await DockerSandbox.RemoveImageAsync(previous);
+            previous = image = snapshot;
         }
-
-        if (plan.TestScript is null)
-            return new StackBaseline(plan.Stack, plan.Image, digest, StackStatus.NoTests, null, plan.Notes, steps, null, [], null, null);
+        if (spec.Setup.Any(s => s.AsRoot)) await sandbox.ResetOwnershipAsync(spec.Image);
 
         var runs = new List<IReadOnlyList<TestOutcome>>();
         var testRuns = new List<StepResult>();
         for (var i = 1; i <= options.BaselineRuns; i++)
         {
-            log?.Invoke($"  {plan.Stack}: test run {i}/{options.BaselineRuns} (network none)");
+            log?.Invoke($"  {spec.Stack}: test run {i}/{options.BaselineRuns} (network none)");
             var outDir = Path.Combine(dir, $"run{i}");
-            if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
-            var r = await sandbox.RunAsync(new SandboxRun(plan.Image, plan.TestScript, Network.None, BaselinePlanner.TestTimeout, plan.Env), outDir, ct);
-            testRuns.Add(Record(job, plan.Stack, $"run{i}", Network.None, r, dir));
+            Dirs.Delete(outDir);
+            var r = await sandbox.RunAsync(new SandboxRun(image, spec.TestScript, Network.None, BaselinePlanner.TestTimeout, spec.Env), outDir, ct);
+            testRuns.Add(Record(job, spec.Stack, $"run{i}", Network.None, r, dir));
             runs.Add(TestReports.ParseFolder(outDir, DockerSandbox.RepoPath));
         }
 
         if (runs.All(r => r.Count == 0))
-            return new StackBaseline(plan.Stack, plan.Image, digest, StackStatus.NoPerTestResults,
-                "the test command produced no report we can read", plan.Notes, steps, plan.TestScript, testRuns, null, null);
+            return new StackBaseline(spec.Stack, spec.Image, digest, StackStatus.NoPerTestResults,
+                "the test command produced no report we can read", spec.Notes, steps, spec.TestScript, testRuns, null, null, image);
 
         var tests = BaselineMath.Combine(runs);
-        var testsFile = Path.Combine(plan.Stack, "tests.json");
+        var testsFile = Path.Combine(spec.Stack, "tests.json");
         job.WriteJson(Name, testsFile, tests);
         var counts = BaselineMath.Count(tests);
-        job.Event(Name, "baseline", new { stack = plan.Stack, counts });
-        return new StackBaseline(plan.Stack, plan.Image, digest, StackStatus.Ok, null, plan.Notes, steps, plan.TestScript, testRuns, counts, testsFile.Replace('\\', '/'));
+        job.Event(Name, "baseline", new { stack = spec.Stack, counts });
+        return new StackBaseline(spec.Stack, spec.Image, digest, StackStatus.Ok, null, spec.Notes, steps, spec.TestScript, testRuns, counts, testsFile.Replace('\\', '/'), image);
     }
 
     private StepResult Record(Job job, string stack, string step, Network network, ProcResult r, string dir)

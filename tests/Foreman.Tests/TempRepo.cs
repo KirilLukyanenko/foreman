@@ -19,6 +19,6 @@ internal sealed class TempRepo : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(Root, recursive: true); } catch (IOException) { }
+        try { Foreman.Core.Dirs.Delete(Root); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 }

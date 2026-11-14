@@ -82,6 +82,13 @@ public static partial class RulesFile
         }
         if (!any) sb.Append("- Nothing found that is generated, vendored or a lockfile.\n");
 
+        if (File.Exists(Path.Combine(job.Dir, "security", "security.json"))
+            && Security.SecuritySummary.ForRules(job.ReadJson<Security.SecurityReport>("security", "security.json")) is { Count: > 0 } security)
+        {
+            sb.Append("\n## Security before any change\n\n");
+            foreach (var line in security) sb.Append("- ").Append(line).Append('\n');
+        }
+
         var conventions = Conventions(files, triage);
         if (conventions.Count > 0)
         {

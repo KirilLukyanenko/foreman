@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Foreman.Core;
@@ -16,28 +15,8 @@ public static class TreeSitterExtractor
     public const string ImageRepository = "foreman-tools/codemap";
 
     /// <summary>The extractor image, tagged with a hash of its Dockerfile and script; built on first use.</summary>
-    public static async Task<string> EnsureImageAsync(CancellationToken ct = default)
-    {
-        var dockerfile = Resource("codemap/Dockerfile");
-        var script = Resource("codemap/extract.py");
-        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(dockerfile + "\0" + script)))[..12];
-        var tag = $"{ImageRepository}:{hash}";
-        if ((await Proc.RunAsync("docker", ["image", "inspect", tag], ct: ct)).Ok) return tag;
-
-        var context = Directory.CreateTempSubdirectory("foreman-codemap-").FullName;
-        try
-        {
-            File.WriteAllText(Path.Combine(context, "Dockerfile"), dockerfile, new UTF8Encoding(false));
-            File.WriteAllText(Path.Combine(context, "extract.py"), script, new UTF8Encoding(false));
-            var r = await Proc.RunAsync("docker", ["build", "--quiet", "-t", tag, context], timeout: TimeSpan.FromMinutes(20), ct: ct);
-            if (!r.Ok) throw new InvalidOperationException($"building the code map image failed: {r.Tail(10)}");
-            return tag;
-        }
-        finally
-        {
-            Dirs.Delete(context);
-        }
-    }
+    public static Task<string> EnsureImageAsync(CancellationToken ct = default) =>
+        ToolImages.EnsureAsync(ImageRepository, ["codemap/Dockerfile", "codemap/extract.py"], ct);
 
     public static async Task<(IReadOnlyList<FileTags> Files, IReadOnlyDictionary<string, string> Versions)> ExtractAsync(
         Job job, string sourceDir, IReadOnlyList<(string Path, string Language)> files, SandboxLimits? limits, CancellationToken ct)
@@ -87,13 +66,5 @@ public static class TreeSitterExtractor
         var refs = e.GetProperty("refs").EnumerateObject().Select(p => new CodeRef(p.Name, p.Value.GetInt32())).ToList();
         return new FileTags(e.GetProperty("path").GetString()!, e.GetProperty("lang").GetString()!, e.GetProperty("lines").GetInt32(), defs, refs,
             e.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String ? err.GetString() : null);
-    }
-
-    private static string Resource(string name)
-    {
-        using var stream = typeof(TreeSitterExtractor).Assembly.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException($"resource {name} is not embedded");
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd().Replace("\r\n", "\n");
     }
 }

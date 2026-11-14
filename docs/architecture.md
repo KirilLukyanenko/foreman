@@ -57,7 +57,7 @@ Model: Claude Haiku 5.5, structured output (`output_config.format`). Turns free 
 deliverables, constraints, deadline, budget, explicit and implicit acceptance criteria, task type (bug, feature,
 refactor, infrastructure, UI), unknowns, and a go/no-go estimate with risk. Gate: JSON schema.
 
-### 1. Recon (now: 1a–1e built; security scans next)
+### 1. Recon (built: 1a–1e and the security scans)
 
 Recon is valuable on its own ("I understood your project in ten minutes") and is the first milestone.
 
@@ -76,8 +76,18 @@ Recon is valuable on its own ("I understood your project in ten minutes") and is
 - Flag install-time code before anything is installed: npm `preinstall`/`install`/`postinstall`/`prepare`,
   `setup.py`, MSBuild `<Exec>`.
 - Git facts: commit style (conventional or not), age, activity.
-- Security (later in milestone 1): gitleaks over the tree and history, `osv-scanner` over lockfiles,
-  Opengrep for a fast SAST pass. All run in containers.
+- **Security (built, the `security` stage).** gitleaks over the files and the cloned history (values redacted;
+  only rule, file, line and commit are kept, never the match, author or email), `osv-scanner` over manifests and
+  lockfiles in `--offline` mode, and Opengrep with GitLab's MIT-licensed `sast-rules` (the Semgrep registry
+  rules and `opengrep-rules` are under licences that restrict commercial use, so they are not used). One image, `tools/security`, every
+  binary and the rules pinned by version and SHA-256; rules that this Opengrep version can't parse are dropped at
+  build and listed. The scan runs as the unprivileged user with no network. The OSV database is refreshed by a
+  separate container that has network and no repository (only ecosystem names go out, never the dependency list)
+  into a shared volume, with a conditional download. Ignore files a repository could use to hide its findings
+  (`.gitleaksignore`, `.semgrepignore`...) are removed from the scan copy and reported. Findings are flagged by
+  where they are (test paths, dev-only lockfiles, version ranges that can't be confirmed); the risks reader checks
+  them against the code, and the rules file says what an implementer must not do (print a secret, add a
+  vulnerable version). They are the "before" picture that Verify compares a change against.
 
 **1b. Environment (built).** Following [RepoLaunch](https://arxiv.org/abs/2603.05026) (build success on Linux:
 C# 92%, JS/TS 89%, Python 76%), with one change: verification is code, not a second model.

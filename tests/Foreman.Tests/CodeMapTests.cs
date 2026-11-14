@@ -144,6 +144,8 @@ public class CodeMapTests
     [InlineData("test/GuardClauses.UnitTests/GuardAgainstNull.cs", true)]
     [InlineData("src/App.Tests/OrderTests.cs", true)]
     [InlineData("src/Latest.cs", false)]
+    [InlineData("src/FluentValidation.Tests.Benchmarks/DataSet.cs", true)]
+    [InlineData("benchmarks/routers/src/index.ts", true)]
     [InlineData("src/router.test.ts", true)]
     [InlineData("uuid_test.go", true)]
     public void Test_paths_are_recognised(string path, bool test) => Assert.Equal(test, CodePaths.IsTest(path));

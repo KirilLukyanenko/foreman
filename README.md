@@ -10,12 +10,13 @@ The design, and what was taken from published coding agents and research, is in
 
 ## Status
 
-Milestone 1, recon, in progress. Working now:
+Milestone 1, recon, done:
 
 | Stage | What it does | Output |
 |---|---|---|
 | fetch | Shallow clone (200 commits, nothing after the base commit), no submodules, hooks off | `fetch/fetch.json` |
 | triage | Stacks (.NET, Node, Python; others reported), SDK pins, test frameworks, CI commands, instruction files (with a hidden-Unicode check), install-time code, git style. No model. | `triage/triage.json` |
+| security | gitleaks (files and history, values redacted), osv-scanner against an offline OSV copy, Opengrep with GitLab's MIT sast-rules; one image, every tool pinned by SHA-256; the scan has no network and the database download never sees the repository. No model. | `security/security.json` |
 | codemap | Definitions and references of every source file (Roslyn for C#, with exact symbol resolution and nothing executed; tree-sitter in the sandbox for 15 other languages), PageRank over the file graph, the best definitions printed to a token budget. A second map personalised to the task, and BM25 candidates for it. No model. | `codemap/repomap.md`, `repomap-task.md`, `index.json` |
 | environment | The deterministic plan first, verified in a fresh copy. Only if it has nothing, or fewer than half of the tests pass, the **environment agent** works in the sandbox with four tools (`run`, `use_image`, `submit`, `give_up`) until a fresh-copy verification accepts its setup and test scripts | `environment/environment.json`, `tools.jsonl` |
 | baseline | Sets the accepted environment up again from scratch (snapshotting system packages), keeps the snapshot as the job's environment image, runs the tests 3 times with the network off; test names with run-time values are normalised. No model. | `baseline/baseline.json`, per-test verdicts |
@@ -32,7 +33,7 @@ server). The model never runs anything on the host.
 
 Localization is measured on 10 real fixed issues (`foreman eval localization`): [results](evals/localization/results.md).
 
-Next: security scans (gitleaks, osv-scanner, Opengrep), then intake and clarify.
+Milestone 1 (recon) is complete. Next: intake and clarify.
 
 ## Run
 

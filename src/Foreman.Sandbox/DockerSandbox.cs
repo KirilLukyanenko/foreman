@@ -21,7 +21,8 @@ public sealed record SandboxLimits(double Cpus = 4, string Memory = "6g", int Pi
 /// Install steps may need system packages (apt). They run as root with only the capabilities a package manager
 /// needs; builds and tests always run as the unprivileged user with none.
 /// </param>
-public sealed record SandboxRun(string Image, string Script, Network Network, TimeSpan Timeout, IReadOnlyDictionary<string, string>? Env = null, bool AsRoot = false);
+/// <param name="Volumes">Extra named volumes as <c>name:/path[:ro]</c>, for data Foreman owns (a vulnerability database).</param>
+public sealed record SandboxRun(string Image, string Script, Network Network, TimeSpan Timeout, IReadOnlyDictionary<string, string>? Env = null, bool AsRoot = false, IReadOnlyList<string>? Volumes = null);
 
 /// <summary>
 /// One Docker volume per job holds the repository copy (<c>/work/repo</c>), a home directory with package caches
@@ -128,6 +129,7 @@ public sealed class DockerSandbox
             "-w", RepoPath,
         ];
         foreach (var (k, v) in run.Env ?? new Dictionary<string, string>()) args.AddRange(["-e", $"{k}={v}"]);
+        foreach (var volume in run.Volumes ?? []) args.AddRange(["-v", volume]);
         args.AddRange([run.Image, "bash", "-c", $"set -o pipefail\nmkdir -p \"$OUT\"\n{run.Script}"]);
 
         var result = await Proc.RunAsync("docker", args, timeout: run.Timeout, ct: ct);

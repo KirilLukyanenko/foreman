@@ -88,16 +88,19 @@ public static partial class GeneratedFiles
 public static partial class CodePaths
 {
     private static readonly HashSet<string> TestDirs = new(StringComparer.OrdinalIgnoreCase)
-        { "test", "tests", "spec", "specs", "__tests__", "__mocks__", "testing", "testdata", "fixtures", "e2e" };
+        { "test", "tests", "spec", "specs", "__tests__", "__mocks__", "testing", "testdata", "fixtures", "e2e", "benchmark", "benchmarks" };
+
+    private static readonly string[] TestProjectParts = [".Tests", ".UnitTests", ".IntegrationTests", ".Specs", ".Benchmarks"];
 
     private static readonly HashSet<string> VendorDirs = new(StringComparer.OrdinalIgnoreCase)
         { "third_party", "thirdparty", "third-party", "vendor", "vendored", "external", "extern", "deps" };
 
+    /// <summary>Tests, their fixtures and benchmarks: code that checks or measures the product and doesn't ship with it.</summary>
     public static bool IsTest(string path)
     {
         var parts = path.Split('/');
-        if (parts[..^1].Any(p => TestDirs.Contains(p) || p.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase)
-            || p.EndsWith(".UnitTests", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".IntegrationTests", StringComparison.OrdinalIgnoreCase)))
+        if (parts[..^1].Any(p => TestDirs.Contains(p)
+            || TestProjectParts.Any(t => p.EndsWith(t, StringComparison.OrdinalIgnoreCase) || p.Contains(t + ".", StringComparison.OrdinalIgnoreCase))))
             return true;
         return TestName().IsMatch(parts[^1]);
     }

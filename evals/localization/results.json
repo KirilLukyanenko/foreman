@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-14T18:17:48.1864686Z",
+  "at": "2026-11-14T20:09:19.9700627Z",
   "cases": 10,
   "mapTokens": 3000,
   "summary": [
@@ -183,7 +183,7 @@
             false,
             false
           ],
-          "mapTokens": 2994
+          "mapTokens": 2963
         },
         {
           "method": "map \u002B exact mentions",
@@ -207,7 +207,7 @@
             false,
             false
           ],
-          "mapTokens": 2040
+          "mapTokens": 2003
         },
         {
           "method": "map seeded by bm25",
@@ -271,7 +271,7 @@
             false,
             false
           ],
-          "mapTokens": 2990
+          "mapTokens": 2991
         },
         {
           "method": "map \u002B exact mentions",
@@ -283,7 +283,7 @@
             false,
             false
           ],
-          "mapTokens": 2997
+          "mapTokens": 2977
         },
         {
           "method": "map \u002B task words",
@@ -522,7 +522,7 @@
             true,
             false
           ],
-          "mapTokens": 2985
+          "mapTokens": 2980
         },
         {
           "method": "map \u002B exact mentions",
@@ -534,7 +534,7 @@
             true,
             false
           ],
-          "mapTokens": 2997
+          "mapTokens": 2986
         },
         {
           "method": "map \u002B task words",
@@ -546,7 +546,7 @@
             true,
             false
           ],
-          "mapTokens": 2983
+          "mapTokens": 2969
         },
         {
           "method": "map seeded by bm25",
@@ -558,7 +558,7 @@
             true,
             false
           ],
-          "mapTokens": 2983
+          "mapTokens": 2997
         },
         {
           "method": "bm25 \u002B map (RRF)",

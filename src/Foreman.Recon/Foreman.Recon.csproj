@@ -7,9 +7,12 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The code map extractor's image is built from these on first use. -->
+    <!-- Foreman's tool images (code map extractor, security scanners) are built from these on first use. -->
     <EmbeddedResource Include="..\..\tools\codemap\Dockerfile" LogicalName="codemap/Dockerfile" />
     <EmbeddedResource Include="..\..\tools\codemap\extract.py" LogicalName="codemap/extract.py" />
+    <EmbeddedResource Include="..\..\tools\security\Dockerfile" LogicalName="security/Dockerfile" />
+    <EmbeddedResource Include="..\..\tools\security\scan.sh" LogicalName="security/scan.sh" />
+    <EmbeddedResource Include="..\..\tools\security\update-osv.sh" LogicalName="security/update-osv.sh" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Foreman.Tests" />

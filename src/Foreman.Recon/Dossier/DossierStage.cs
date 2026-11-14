@@ -193,6 +193,8 @@ public sealed class DossierStage(IAgentDriver? driver, DossierOptions? options =
 
         if (section is "risks" or "conventions" && File.Exists(Path.Combine(job.Dir, "baseline", "baseline.json")))
             sb.Append(BaselineFacts(job, section == "risks"));
+        if (section == "risks" && File.Exists(Path.Combine(job.Dir, "security", "security.json")))
+            sb.Append(Security.SecuritySummary.ForReader(job.ReadJson<Security.SecurityReport>("security", "security.json")));
         return sb.ToString();
     }
 

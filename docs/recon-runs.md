@@ -159,3 +159,47 @@ The first comp-ledger rules file listed ten long known-red test names (more than
 
 comp-ledger's accepted test script still ends with `exit 0` (from the environment run before the prompt said not
 to mask the exit code); the rules file shows it as it is. Rerunning that job's environment stage will replace it.
+
+## 14 November 2026: security scans
+
+gitleaks 8.30.1, osv-scanner 2.7.0 (offline), Opengrep 1.33.1 with GitLab sast-rules 2.10.1. "Secrets" counts what is
+in the current files (in test paths); "SAST" counts high and medium findings outside tests.
+
+| Repository | Secrets | Only in history | Commits scanned | Vulnerable packages (advisories) | SAST in code | SAST in tests | Files SAST scanned | Time |
+|---|---|---|---|---|---|---|---|---|
+| comp-ledger | 0 | 0 | 51 | 0 | 1 | 0 | 22 | 23 s |
+| ardalis/GuardClauses | 0 | 0 | 224 | 0 | 0 | 0 | 15 | 22 s |
+| unjs/defu | 0 | 0 | 173 | 16 (42) | 0 | 0 | 4 | 32 s |
+| pallets/itsdangerous | 0 | 0 | 556 | 11 (53) | 1 | 0 | 9 | 23 s |
+| python-humanize/humanize | 0 | 0 | 505 | 0 | 0 | 0 | 6 | 24 s |
+| expressjs/cors | 0 | 0 | 202 | 0 | 0 | 0 | 1 | 21 s |
+| google/uuid | 0 | 0 | 166 | 0 | 2 | 0 | 16 | 21 s |
+| dtolnay/itoa | 0 | 0 | 247 | 0 | 0 | 0 | 4 | 20 s |
+| App-vNext/Polly | 0 | 0 | 202 | 0 | 0 | 0 | 477 | 27 s |
+| FluentValidation | 0 | 0 | 255 | 0 | 0 | 12 | 216 | 27 s |
+| jbogard/MediatR | 0 | 1 (a test JWT) | 570 | 1 (1) | 0 | 0 | 82 | 23 s |
+| honojs/hono | 30 (all in tests) | 0 | 229 | 71 (338) | 13 | 13 | 350 | 41 s |
+| Textualize/rich | 0 | 0 | 2,675 | 5 (30) | 13 | 0 | 146 | 29 s |
+
+The first scan also builds the image (about 2.5 minutes: every rule is validated). Refreshing the OSV database
+when nothing changed takes about 1.5 s; the first download of npm's is 220 MB.
+
+What the first runs changed:
+- **A rule that doesn't parse failed every scan.** One C# rule of sast-rules 2.10.1 is invalid for Opengrep 1.33.1,
+  and Opengrep then exits 2 on every repository, C# or not. Each rule is now validated when the image is built;
+  the 6 of 341 that fail are dropped and listed in every report.
+- **A version range is not a version.** MediatR's `.csproj` has `[8.14.0, )`; osv-scanner compared it as if it
+  were installed and reported an advisory fixed in 7.1.2. Such matches are now marked unconfirmed.
+- **Benchmarks are not product code.** FluentValidation's 12 "weak random" findings are in
+  `src/FluentValidation.Tests.Benchmarks/`; Hono's 71 vulnerable packages include four benchmark lockfiles.
+  Benchmark folders and `*.Tests.*` projects now count as test code (also for the code map's weights), and
+  osv-scanner's own dev-dependency marks are kept (Poetry has them: 4 of rich's 5 packages are dev tools).
+- Opengrep skips test folders by default, and some new TypeScript syntax it can't parse (three Hono files): both
+  are reported, not hidden.
+
+**The risks reader with the scan.** On Hono and rich it checked findings against the code instead of repeating
+them: Hono's 30 secrets are JWT test fixtures; its 338 advisories come from the dev toolchain (`bun.lock`) and
+benchmarks, since Hono has no runtime dependencies; the `new RegExp` findings build patterns from the developer's
+routes, not from requests ("be careful that a fix doesn't build regexes from request paths"). On rich it placed the
+`shell=True` findings in a developer script and said which findings it had not opened. 7 tool calls each, 30–43 s,
+$0.12–0.16 (estimate).

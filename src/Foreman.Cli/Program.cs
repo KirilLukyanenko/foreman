@@ -5,6 +5,7 @@ using Foreman.Recon;
 using Foreman.Recon.Baseline;
 using Foreman.Recon.CodeMap;
 using Foreman.Recon.Dossier;
+using Foreman.Recon.Security;
 using Foreman.Recon.Environment;
 using Foreman.Recon.Triage;
 
@@ -39,7 +40,7 @@ switch (args.FirstOrDefault())
               foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3]
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
-              foreman recon --job <id> [--force fetch,triage,codemap,environment,baseline,dossier]
+              foreman recon --job <id> [--force fetch,triage,security,codemap,environment,baseline,dossier]
               foreman show <job id>
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
@@ -73,6 +74,7 @@ async Task<int> Recon()
     [
         new FetchStage(options),
         new TriageStage(),
+        new SecurityStage(options.Limits, Console.WriteLine),
         new CodeMapStage(null, options.Limits),
         new EnvironmentStage(options, driver, Console.WriteLine, Arg("--model")),
         new BaselineStage(options, Console.WriteLine),
@@ -149,6 +151,14 @@ int Show(string? id)
                         CI commands: {t.CiCommands.Count}, instruction files: {t.InstructionFiles.Count} ({t.InstructionFiles.Sum(f => f.HiddenCharacters)} hidden characters), install scripts: {t.InstallScripts.Count}
                         agent config removed from the sandbox copy: {(t.RemovedAgentConfig.Count == 0 ? "none" : string.Join(", ", t.RemovedAgentConfig))}
             """);
+    }
+    if (File.Exists(Path.Combine(job.Dir, "security", "security.json")))
+    {
+        var x = job.ReadJson<SecurityReport>("security", "security.json");
+        Console.WriteLine($"security    secrets: {x.SecretsInFiles} in files, {x.Secrets.Count - x.SecretsInFiles} only in history ({x.HistoryCommits} commits); vulnerable packages: {x.Vulnerabilities.Select(v => (v.Package, v.Version)).Distinct().Count()} ({x.Vulnerabilities.Count} advisories); SAST ({x.SastFilesScanned} files): {x.Sast.Count(f => !f.InTestPath && SecurityStage.SeverityOrder(f.Severity) < 2)} in code, {x.Sast.Count(f => SecurityStage.SeverityOrder(f.Severity) == 2)} informational, {x.Sast.Count(f => f.InTestPath)} in tests");
+        foreach (var w in x.Warnings.Take(3)) Console.WriteLine($"            {w}");
+        if (x.RemovedIgnoreFiles.Count > 0) Console.WriteLine($"            ignored the repository's own allowlists: {string.Join(", ", x.RemovedIgnoreFiles)}");
+        foreach (var t in x.Tools.Where(t => t.Error is not null)) Console.WriteLine($"            {t.Tool} FAILED: {t.Error}");
     }
     if (File.Exists(Path.Combine(job.Dir, "codemap", "codemap.json")))
     {

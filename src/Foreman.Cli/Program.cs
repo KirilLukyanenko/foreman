@@ -66,6 +66,7 @@ switch (args.FirstOrDefault())
               foreman eval implement [--only id,id] [--runs 1] [--label name] [--reuse-planning] [--keep-spec] [--no-acceptance] [--no-review]
                                      [--candidates 1] [--implement-model id] [--review-model id] [--rounds 3]
               foreman eval compare <results-a.json> <results-b.json> [--out file.md]
+              foreman eval redteam [--only id,id]          prompt injection planted in a repository and a task
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -134,6 +135,7 @@ async Task<int> Eval()
     if (args.ElementAtOrDefault(1) == "spec") return await EvalSpec();
     if (args.ElementAtOrDefault(1) == "implement") return await EvalImplement();
     if (args.ElementAtOrDefault(1) == "compare") return EvalCompare();
+    if (args.ElementAtOrDefault(1) == "redteam") return await EvalRedTeam();
     if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake', 'clarify', 'spec' or 'implement'"); return 2; }
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
     var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
@@ -197,6 +199,23 @@ async Task<int> EvalImplement()
     var name = (label is null ? "results" : $"results-{label}") + (Arg("--only") is null ? "" : "-partial");
     File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
     var md = ImplementEval.Markdown(report);
+    File.WriteAllText(Path.Combine(outDir, name + ".md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
+async Task<int> EvalRedTeam()
+{
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "redteam", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = RedTeamEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var driver = Driver() ?? throw new InvalidOperationException("eval redteam needs a model");
+    var report = await new RedTeamEval(home, driver, Console.WriteLine).RunAsync(cases, casesFile, cts.Token);
+    var name = Arg("--only") is null ? "results" : "results-partial";
+    File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
+    var md = RedTeamEval.Markdown(report, cases);
     File.WriteAllText(Path.Combine(outDir, name + ".md"), md);
     Console.WriteLine();
     Console.WriteLine(md);

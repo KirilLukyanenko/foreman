@@ -377,7 +377,8 @@ line to `metrics/runs.jsonl`. Definitions are written before the first run, as i
 2. **Intake, clarify, spec**: from task text to a Ready PRP with a done contract.
 3. **Implement and verify**: one candidate, the full gate, the reviewer, the fix loop. Done.
 4. **Acceptance tests, parallel candidates, evals**: hidden tests with mutants, N candidates with selection, the
-   eval harness with ablations, README with the numbers.
+   eval harness with ablations, README with the numbers. Built: the accept stage, `--candidates N`, `eval implement --runs`,
+   `eval compare`, `eval redteam`; measured on 9 real issues and 4 red-team cases.
 5. **Deliver and Tower**: PR and client report, approvals from the phone, one real task end to end.
 
 ## 6. Defaults chosen without the owner (change any of them)

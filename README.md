@@ -10,7 +10,7 @@ The design, and what was taken from published coding agents and research, is in
 
 ## Status
 
-Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done; milestone 3 (implement and verify, one candidate) done.
+Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done; milestone 3 (implement and verify) done; milestone 4 (hidden acceptance tests, parallel candidates, the eval harness, a red team) built and measured.
 
 | Stage | What it does | Output |
 |---|---|---|
@@ -25,8 +25,9 @@ Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done; mil
 | dossier | Four read-only **readers** in parallel (architecture, conventions, where the task lives, risks) with `list_files`, `read_file`, `search`, `code_map`, `find_symbol`; every file, line and symbol they cite is checked by code before a section is accepted. Plus a short rules file for the implementer, built by code from verified facts. | `dossier/dossier.md`, `dossier/AGENTS.md` |
 | clarify | The under-specification detector (Claude Opus 5.5) after recon: reads the code before asking; each gap is closed by the repository (with evidence), assumed (default stated) or asked (at most 5, each with a default in the client's language). Code checks the rules. | `clarify/questions.md` (a draft for the human to send), `clarify.md`, `questions.json` |
 | spec | The PRP (Claude Opus 5.5, with a lab: a throwaway copy of the set-up repository where it runs what it claims and sketches the change against the suite): requirements, each with how it is checked (acceptance test, existing tests, a command, or review), the public interface, examples, decisions, where the change goes, tasks. Code enforces the done contract and coverage of the brief and of the client's answers, checks files and symbols, and adds the verified commands. Waits for the client's answers; the human marks it Ready. | `spec/prp.md`, `prp.json`, `ready.json` |
-| implement | The **implementer** (Claude Opus 5.5) on a copy of the set-up repository, network off, unprivileged: `bash`, a str_replace editor, `run_tests` against the baseline, `submit`, `give_up`. Claude Code runs on the host with no built-in tools; only its tools act in the sandbox, so no credential goes into it. `submit` is checked by code (diff guard, every requirement accounted for, a test when the PRP needs one, no regression). At most 2 fix rounds with the gate's and the reviewer's findings. | `implement/implement.json`, `patch.diff`, `pr.md` |
-| verify | On fresh copies with only the patch: the diff guard (edited or deleted tests, skip markers, CI, test config, lockfiles), pass-to-pass against the baseline (a regression must fail twice), the new tests fail before the change and pass with it, the CI linters before and after, gitleaks on added lines. No model. | `verify/verify.json` |
+| accept | A separate **acceptance test writer** (Claude Opus 5.5) sees the Ready PRP and the code before the change, never the implementer's work, and writes black-box tests with a reference fix of its own in a lab. Code tests the tests: new behaviour fails before the change, everything passes on the reference, and broken versions of the reference (mutants: a hunk left out, an operator flipped) are caught. | `acceptance/tests.diff`, `acceptance.json` |
+| implement | The **implementer** (Claude Opus 5.5) on a copy of the set-up repository, network off, unprivileged: `bash`, a str_replace editor, `run_tests` against the baseline, `submit`, `give_up`. Claude Code runs on the host with no built-in tools; only its tools act in the sandbox, so no credential goes into it. `submit` is checked by code (diff guard, every requirement accounted for, a test when the PRP needs one, no regression). At most 2 fix rounds with the gate's and the reviewer's findings. `--candidates N` runs N in parallel and keeps the best verified one. | `implement/implement.json`, `patch.diff`, `pr.md` |
+| verify | On fresh copies with only the patch: the diff guard (edited or deleted tests, skip markers, CI, test config, lockfiles), pass-to-pass against the baseline (a regression must fail twice), the new tests fail before the change and pass with it, the hidden acceptance tests pass, the CI linters before and after, gitleaks on added lines. No model. | `verify/verify.json` |
 | review | A fresh **reviewer** (Claude Opus 5.5) sees the PRP, the diff, the gate's facts and the implementer's account: a verdict per requirement with evidence; each finding must cite a PRP rule or an added line, checked by code; minor findings are notes, never sent back. | `verify/round-N/review.json` |
 
 Runs so far, failures and fixes included: [docs/recon-runs.md](docs/recon-runs.md). Nine repositories in .NET,
@@ -42,7 +43,9 @@ Measured: localization on 10 real fixed issues ([results](evals/localization/res
 
 Implement end to end on 9 real fixed issues (Python, TypeScript, C#), graded with the maintainers' own tests from each fix: verified by Foreman's gate 9/9, 8 in the first round; resolved 6/8 of the gradeable ones, the other 2 narrower than the maintainers' fix by the PRP's choice ([results](evals/implement/results.md)). Before the spec writer had a lab to check its claims in, 3 of the 9 stopped on a contradictory PRP. Runs, failures and fixes: [docs/implement-runs.md](docs/implement-runs.md).
 
-Next: milestone 4, hidden acceptance tests with mutants, parallel candidates, the eval harness with ablations.
+Foreman's own hidden acceptance tests, on the same 9 issues: 181 tests written and tested by code, every implementer passed all of them, and where they disagree with the maintainers' fix it is where the PRP chose a different reading of the issue. Red team: an instruction planted in a README, a code comment, AGENTS.md and the task text; safe 4/4, the real task done 4/4 ([results](evals/redteam/results.md)).
+
+Next: milestone 5, delivery: the client report, approvals from Tower, one real task end to end.
 
 ## Run
 
@@ -62,6 +65,9 @@ dotnet run --project src/Foreman.Cli -- eval intake --runs 3                    
 dotnet run --project src/Foreman.Cli -- eval clarify --runs 3
 dotnet run --project src/Foreman.Cli -- eval spec
 dotnet run --project src/Foreman.Cli -- eval implement [--only id,id]                     # 9 real issues, hidden tests
+dotnet run --project src/Foreman.Cli -- eval implement --runs 3 --reuse-planning --label x  # pass@k, pass^k; ablations: --no-review, --no-acceptance, --candidates 3
+dotnet run --project src/Foreman.Cli -- eval compare a.json b.json                        # paired, McNemar
+dotnet run --project src/Foreman.Cli -- eval redteam                                      # prompt injection planted in a repository
 ```
 
 Jobs are stored in `%LOCALAPPDATA%/Foreman/jobs` (or `$FOREMAN_HOME/jobs`).

@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-15T17:50:55.4487805Z",
+  "at": "2026-11-15T22:20:06.8221111Z",
   "model": "claude-opus-5-5",
   "cases": 9,
   "results": [
@@ -18,17 +18,27 @@
         "passToPassBroken": []
       },
       "filesChanged": 2,
-      "linesAdded": 31,
+      "linesAdded": 8,
       "linesRemoved": 2,
-      "implementCostUsd": 0.4119,
-      "planningCostUsd": 0.2836,
-      "seconds": 286.4
+      "implementCostUsd": 0.4012,
+      "planningCostUsd": 0.5510,
+      "seconds": 361.8,
+      "acceptance": {
+        "status": "ready",
+        "tests": 7,
+        "failOnBase": 6,
+        "passOnGold": 6,
+        "failingOnGold": [
+          "tests.test_acceptance_naturalsize::test_r4_single_byte (R4)"
+        ],
+        "costUsd": 0.1986
+      }
     },
     {
       "id": "pallets-itsdangerous-375",
       "language": "Python",
       "status": "verified",
-      "rounds": 2,
+      "rounds": 1,
       "verified": true,
       "reviewVerdict": "approve",
       "hidden": {
@@ -39,11 +49,20 @@
         "passToPassBroken": []
       },
       "filesChanged": 4,
-      "linesAdded": 99,
-      "linesRemoved": 8,
-      "implementCostUsd": 0.7943,
-      "planningCostUsd": 0.6587,
-      "seconds": 434.6
+      "linesAdded": 79,
+      "linesRemoved": 10,
+      "implementCostUsd": 0.4885,
+      "planningCostUsd": 0.6443,
+      "seconds": 448.1,
+      "acceptance": {
+        "status": "ready",
+        "tests": 13,
+        "failOnBase": 6,
+        "mutationScore": 0.5,
+        "passOnGold": 13,
+        "failingOnGold": [],
+        "costUsd": 0.3221
+      }
     },
     {
       "id": "Textualize-rich-3577",
@@ -62,11 +81,23 @@
         "passToPassBroken": []
       },
       "filesChanged": 4,
-      "linesAdded": 37,
-      "linesRemoved": 2,
-      "implementCostUsd": 0.4257,
-      "planningCostUsd": 0.7273,
-      "seconds": 512.9
+      "linesAdded": 44,
+      "linesRemoved": 3,
+      "implementCostUsd": 0.3787,
+      "planningCostUsd": 0.5370,
+      "seconds": 637,
+      "acceptance": {
+        "status": "ready",
+        "tests": 13,
+        "failOnBase": 11,
+        "passOnGold": 10,
+        "failingOnGold": [
+          "test_acceptance_from_ansi_newline::test_r6_crlf_normalised (R6)",
+          "test_acceptance_from_ansi_newline::test_r6_other_separators (R6)",
+          "test_acceptance_from_ansi_newline::test_r8_decode_unchanged (R8)"
+        ],
+        "costUsd": 0.2561
+      }
     },
     {
       "id": "unjs-defu-119",
@@ -83,11 +114,19 @@
         "passToPassBroken": []
       },
       "filesChanged": 5,
-      "linesAdded": 48,
+      "linesAdded": 26,
       "linesRemoved": 1,
-      "implementCostUsd": 0.4035,
-      "planningCostUsd": 0.4236,
-      "seconds": 307.2
+      "implementCostUsd": 0.3088,
+      "planningCostUsd": 0.4687,
+      "seconds": 385.7,
+      "acceptance": {
+        "status": "ready",
+        "tests": 5,
+        "failOnBase": 4,
+        "passOnGold": 5,
+        "failingOnGold": [],
+        "costUsd": 0.1556
+      }
     },
     {
       "id": "honojs-hono-4325",
@@ -106,11 +145,28 @@
         "passToPassBroken": []
       },
       "filesChanged": 3,
-      "linesAdded": 69,
+      "linesAdded": 101,
       "linesRemoved": 1,
-      "implementCostUsd": 0.4939,
-      "planningCostUsd": 0.7770,
-      "seconds": 1020.4
+      "implementCostUsd": 0.4316,
+      "planningCostUsd": 0.8241,
+      "seconds": 1204.8,
+      "acceptance": {
+        "status": "ready",
+        "tests": 16,
+        "failOnBase": 11,
+        "passOnGold": 8,
+        "failingOnGold": [
+          "src/router/reg-exp-router/router.acceptance.test.ts::R2: optional catch-all with empty capture > R2: /files/:wildcard{.*}? matches /files/ (R2)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R2: optional catch-all with empty capture > R2: other prefix /docs/:rest{.*}? matches /docs/ (R2)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R3: empty param captures in any route > R3: non-optional /files/:p{.*} on /files/ (R3)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R3: empty param captures in any route > R3: multi param with last capture empty (R3)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R3: empty param captures in any route > R3: multi param with all captures empty (R3)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R3: empty param captures in any route > R3: multi param with first capture empty and other data (R3)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R3: empty param captures in any route > R3: empty capture among several routes picks the right handler (R3)",
+          "src/router/reg-exp-router/router.acceptance.test.ts::R5: non-empty captures unchanged > R5: /:wildcard{.*}? on /a and / (R5)"
+        ],
+        "costUsd": 0.2937
+      }
     },
     {
       "id": "ardalis-GuardClauses-339",
@@ -127,11 +183,19 @@
         "passToPassBroken": []
       },
       "filesChanged": 2,
-      "linesAdded": 125,
-      "linesRemoved": 3,
-      "implementCostUsd": 0.5291,
-      "planningCostUsd": 0.3996,
-      "seconds": 389.9
+      "linesAdded": 123,
+      "linesRemoved": 2,
+      "implementCostUsd": 0.5415,
+      "planningCostUsd": 0.5080,
+      "seconds": 583.9,
+      "acceptance": {
+        "status": "ready",
+        "tests": 17,
+        "failOnBase": 17,
+        "passOnGold": 17,
+        "failingOnGold": [],
+        "costUsd": 0.2791
+      }
     },
     {
       "id": "jbogard-MediatR-1118",
@@ -148,12 +212,20 @@
         "passToPassBroken": [],
         "error": "the fix's tests have no fail-to-pass test in this environment"
       },
-      "filesChanged": 5,
-      "linesAdded": 185,
-      "linesRemoved": 3,
-      "implementCostUsd": 0.6281,
-      "planningCostUsd": 0.6989,
-      "seconds": 737.8
+      "filesChanged": 3,
+      "linesAdded": 187,
+      "linesRemoved": 0,
+      "implementCostUsd": 0.6575,
+      "planningCostUsd": 0.7717,
+      "seconds": 849.7,
+      "acceptance": {
+        "status": "ready",
+        "tests": 23,
+        "failOnBase": 6,
+        "passOnGold": 23,
+        "failingOnGold": [],
+        "costUsd": 0.5235
+      }
     },
     {
       "id": "FluentValidation-FluentValidation-2240",
@@ -170,11 +242,19 @@
         "passToPassBroken": []
       },
       "filesChanged": 5,
-      "linesAdded": 222,
+      "linesAdded": 164,
       "linesRemoved": 0,
-      "implementCostUsd": 0.7820,
-      "planningCostUsd": 1.2213,
-      "seconds": 1149.3
+      "implementCostUsd": 0.6876,
+      "planningCostUsd": 1.0061,
+      "seconds": 1087,
+      "acceptance": {
+        "status": "gave_up",
+        "tests": 0,
+        "failOnBase": 0,
+        "failingOnGold": [],
+        "costUsd": 0.5649,
+        "error": "I couldn't submit: Foreman can't apply my reference fix. The PRP itself is fine. The files the fix has to edit (DefaultValidatorOptions.cs, ICollectionRule.cs, Internal/CollectionPropertyRule.cs) use CRLF line endings and are stored that way in git (`git ls-files --eol` shows i/crlf, attr/-text). submit_tests fails with \"patch failed ... patch does not apply\" for all three files. I reproduced it in the lab: `git diff > p; git stash; git apply --check p` succeeds, but the same patch with CRs removed (`tr -d '\\r'`) fails with exactly Foreman's errors. With `--ignore-whitespace` it applies. So Foreman's patch extraction seems to drop the CR characters before applying, and no edit to an existing file in this repo can get through. To fix it, Foreman needs to keep the patch byte-for-byte or apply it with `--ignore-whitespace`. The work is ready in the lab: a CRLF-preserving reference fix (AsyncFilter on the interface and the class, the sync-Validate throw after the AsyncCondition block, the awaited filter after Filter in the loop, and both WhereAsync overloads with null guards). There are also 14 acceptance tests in src/FluentValidation.Tests/WhereAsyncAcceptanceTests.cs covering R1-R8. All 14 pass with the fix, and the full suite runs 2817 tests with 2814 passing, 3 skipped and no regressions. I can resubmit as soon as patch application handles CRLF."
+      }
     },
     {
       "id": "App-vNext-Polly-2815",
@@ -190,12 +270,21 @@
         "passToPass": 6016,
         "passToPassBroken": []
       },
-      "filesChanged": 6,
-      "linesAdded": 177,
+      "filesChanged": 3,
+      "linesAdded": 151,
       "linesRemoved": 2,
-      "implementCostUsd": 0.7367,
-      "planningCostUsd": 0.7017,
-      "seconds": 1458.2
+      "implementCostUsd": 0.5112,
+      "planningCostUsd": 0.7186,
+      "seconds": 2027.5,
+      "acceptance": {
+        "status": "ready",
+        "tests": 42,
+        "failOnBase": 34,
+        "mutationScore": 1,
+        "passOnGold": 42,
+        "failingOnGold": [],
+        "costUsd": 0.2942
+      }
     }
   ]
 }

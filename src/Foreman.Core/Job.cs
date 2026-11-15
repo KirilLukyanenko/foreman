@@ -122,6 +122,8 @@ public sealed class Job
 
     private static void WriteAtomic(string path, string text)
     {
+        // A stage may keep files in subfolders of its own (implement/round-2/...).
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, text, new UTF8Encoding(false));
         File.Move(tmp, path, overwrite: true);

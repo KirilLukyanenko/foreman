@@ -1,6 +1,7 @@
 using Foreman.Agents;
 using Foreman.Core;
 using Foreman.Evals;
+using Foreman.Implement;
 using Foreman.Planning.Clarify;
 using Foreman.Planning.Intake;
 using Foreman.Planning.Spec;
@@ -16,6 +17,7 @@ using Foreman.Recon.Triage;
 //               [--model id] [--effort low|medium|high] [--budget usd] [--home dir]
 // foreman recon --job <id> [--force stage,stage]       resume or rerun stages of an existing job
 // foreman answer <id> [--set Q1=text ...] [--defaults]   record the client's answers to clarify's questions
+// foreman verify <id> [--round n] [--no-review]          rerun verification of implement/patch.diff
 // foreman show <id>                                     summary of a job's recon
 // foreman mcp environment --job <id> --stack <s> --image <i>  MCP server for an agent's toolbox (stdio)
 // foreman mcp reader --job <id> --section <name>
@@ -35,6 +37,8 @@ switch (args.FirstOrDefault())
         return Answer(args.ElementAtOrDefault(1));
     case "ready":
         return MarkReady(args.ElementAtOrDefault(1));
+    case "verify":
+        return await Verify(args.ElementAtOrDefault(1));
     case "eval":
         return await Eval();
     case "show":
@@ -50,13 +54,16 @@ switch (args.FirstOrDefault())
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
                             [--intake-model id] [--clarify-model id] [--spec-model id] [--go]
-              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec]
+                            [--implement-model id] [--review-model id] [--rounds 3] [--no-review]
+              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec,implement]
               foreman answer <job id> [--set Q1="..."]... [--defaults]
               foreman ready <job id>                      mark the PRP (spec/prp.md) as reviewed and approved
+              foreman verify <job id> [--round n] [--no-review]   verify implement/patch.diff again
               foreman show <job id>
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
+              foreman eval implement [--only id,id] [--keep-spec] [--implement-model id] [--review-model id] [--rounds 3]
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -103,6 +110,8 @@ async Task<int> Recon()
             new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine),
             // Waits (fails with the reason) until the client's answers are recorded; rerun the job after 'foreman answer'.
             new SpecStage(driver, new SpecOptions(Arg("--spec-model") ?? SpecOptions.DefaultModel), Console.WriteLine),
+            // Waits (fails with the reason) until the human marks the PRP Ready with 'foreman ready'.
+            new ImplementStage(driver, ImplementOptionsFromArgs(), Console.WriteLine),
         } : [],
     ];
     // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
@@ -119,7 +128,8 @@ async Task<int> Eval()
     if (args.ElementAtOrDefault(1) == "intake") return await EvalIntake();
     if (args.ElementAtOrDefault(1) == "clarify") return await EvalClarify();
     if (args.ElementAtOrDefault(1) == "spec") return await EvalSpec();
-    if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake' or 'clarify'"); return 2; }
+    if (args.ElementAtOrDefault(1) == "implement") return await EvalImplement();
+    if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake', 'clarify', 'spec' or 'implement'"); return 2; }
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
     var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
     var cases = LocalizationEval.ReadCases(casesFile);
@@ -168,6 +178,23 @@ async Task<int> EvalSpec()
     return 0;
 }
 
+async Task<int> EvalImplement()
+{
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "implement", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = ImplementEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var driver = Driver() ?? throw new InvalidOperationException("eval implement needs a model");
+    var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec")).RunAsync(cases, casesFile, cts.Token);
+    var name = Arg("--only") is null ? "results" : "results-partial";
+    File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
+    var md = ImplementEval.Markdown(report);
+    File.WriteAllText(Path.Combine(outDir, name + ".md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
 async Task<int> EvalClarify()
 {
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "clarify", "cases.json");
@@ -194,6 +221,8 @@ IToolbox Toolbox(string? kind)
         "reader" => new ReaderTools(job, Required("--section")),
         "intake" => new IntakeTools(job),
         "spec" => new SpecTools(job),
+        "implement" => new ImplementTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
+        "review" => new ReviewTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
         "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),
         _ => throw new ArgumentException($"unknown toolbox '{kind}'"),
     };
@@ -212,6 +241,29 @@ IAgentDriver? Driver()
         "claude-code" => new ClaudeCodeDriver(model, budget),
         _ => null,
     };
+}
+
+ImplementOptions ImplementOptionsFromArgs() => new(
+    Model: Arg("--implement-model") ?? ImplementOptions.DefaultModel,
+    MaxRounds: int.TryParse(Arg("--rounds"), out var rounds) && rounds > 0 ? rounds : 3,
+    Review: new ReviewOptions(Arg("--review-model") ?? ReviewOptions.DefaultModel),
+    SkipReview: args.Contains("--no-review"));
+
+async Task<int> Verify(string? id)
+{
+    if (id is null) { Console.Error.WriteLine("verify: job id required"); return 2; }
+    var job = Job.Open(home, id);
+    var patchFile = Path.Combine(job.Dir, "implement", "patch.diff");
+    if (!File.Exists(patchFile)) { Console.Error.WriteLine("verify: no implement/patch.diff; run the implement stage first"); return 1; }
+    var options = ImplementOptionsFromArgs();
+    var round = int.TryParse(Arg("--round"), out var r) && r > 0 ? r : 1;
+    var resultFile = ImplementTools.ResultFile(job, round);
+    var submission = File.Exists(resultFile) ? Json.Read<ImplementResult>(File.ReadAllText(resultFile))?.Submission : null;
+    var verifier = new Verifier(options.SkipReview ? null : Driver(), options.Review, null, Console.WriteLine);
+    var report = await verifier.RunAsync(job, round, File.ReadAllText(patchFile), submission, cts.Token);
+    Console.WriteLine(report.Passed ? "PASSED" : "FAILED");
+    foreach (var b in report.Blockers) Console.WriteLine($"  - {b}");
+    return report.Passed ? 0 : 1;
 }
 
 int Answer(string? id)
@@ -338,6 +390,20 @@ int Show(string? id)
         var r = job.ReadJson<SpecReport>("spec", "spec.json");
         Console.WriteLine($"spec        {r.Requirements} requirements ({string.Join(", ", r.Checks.Select(c => $"{c.Value} {c.Key.Replace('_', ' ')}"))}), {r.Examples} examples, {r.Tasks} tasks; {r.Submissions} submissions{(r.Warnings.Count > 0 ? $", {r.Warnings.Count} warnings" : "")}; {r.Agent.ToolCalls} tool calls, ${r.Agent.CostUsd:0.00}{(r.Agent.CostIsEstimate ? " (estimate)" : "")}, {r.Agent.Seconds:0} s");
         Console.WriteLine($"            {Ready.Check(job) ?? "Ready"}");
+    }
+    if (File.Exists(Path.Combine(job.Dir, "implement", "implement.json")))
+    {
+        var r = job.ReadJson<ImplementReport>("implement", "implement.json");
+        Console.WriteLine($"implement   {r.Status}{(r.Reason is null ? "" : $": {r.Reason}")}; {r.Rounds.Count} round(s), ${r.CostUsd:0.00} (estimate), {r.Seconds:0} s");
+        foreach (var x in r.Rounds)
+            Console.WriteLine($"            round {x.Round}: {x.Outcome}{(x.Verified is null ? "" : x.Verified.Value ? ", verified" : $", {x.Blockers} blocker(s)")}; {x.Agent?.ToolCalls} tool calls, ${x.CostUsd:0.00}, {x.Seconds:0} s");
+    }
+    if (File.Exists(Path.Combine(job.Dir, "verify", "verify.json")))
+    {
+        var v = job.ReadJson<VerifyReport>("verify", "verify.json");
+        Console.WriteLine($"verify      round {v.Round}: {(v.Passed ? "PASSED" : "FAILED")}; {v.FilesChanged} files +{v.LinesAdded} -{v.LinesRemoved}; {(v.Tests is { } t ? $"{t.Passed} pass, {t.Regressions.Count} regressions, {t.NewPassing.Count} new passing" : "no test run")}; {(v.Repro is { } rp ? $"{rp.Reproducing.Count} new test(s) fail before and pass after" : "")}");
+        if (v.Review is { } rv) Console.WriteLine($"            review: {rv.Verdict}, {rv.Requirements.Count(q => q.Verdict == "met")}/{rv.Requirements.Count} requirements met, {rv.Findings.Count} findings, {rv.Notes.Count} notes");
+        foreach (var b in v.Blockers.Take(5)) Console.WriteLine($"            - {b}");
     }
     return 0;
 }

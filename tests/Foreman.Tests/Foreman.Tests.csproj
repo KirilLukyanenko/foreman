@@ -9,7 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Foreman.Agents\Foreman.Agents.csproj" />
     <ProjectReference Include="..\..\src\Foreman.Evals\Foreman.Evals.csproj" />
-    <ProjectReference Include="..\..\src\Foreman.Planning\Foreman.Planning.csproj" />
+    <ProjectReference Include="..\..\src\Foreman.Implement\Foreman.Implement.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

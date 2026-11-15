@@ -15,6 +15,8 @@ public sealed record FetchResult(string Source, string Commit, string? Ref, int 
 /// <summary>
 /// Clones the repository into the job folder. Shallow, so the agent has the recent history for style but nothing
 /// after the base commit; no submodules; hooks pointed at a folder that doesn't exist, so nothing runs on clone.
+/// Line endings are checked out as committed: a Windows git with <c>core.autocrlf</c> would otherwise turn LF into
+/// CRLF, and a diff taken in the sandbox would then not apply to the real repository (and shell scripts break).
 /// </summary>
 public sealed class FetchStage(ReconOptions options) : IStage
 {
@@ -36,8 +38,9 @@ public sealed class FetchStage(ReconOptions options) : IStage
         }
         List<string> args =
         [
-            "-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true",
+            "-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
             "clone", "--depth", Depth.ToString(), "--no-recurse-submodules", "--config", "core.hooksPath=.foreman-no-hooks",
+            "--config", "core.autocrlf=false", "--config", "core.eol=lf",
         ];
         if (options.Ref is not null) args.AddRange(["--branch", options.Ref]);
         args.AddRange([url, job.SourceDir]);
@@ -54,7 +57,7 @@ public sealed class FetchStage(ReconOptions options) : IStage
     private async Task FetchCommitAsync(Job job, string url, string sha, CancellationToken ct)
     {
         Directory.CreateDirectory(job.SourceDir);
-        string[] safe = ["-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true"];
+        string[] safe = ["-c", "core.hooksPath=.foreman-no-hooks", "-c", "core.longpaths=true", "-c", "core.autocrlf=false", "-c", "core.eol=lf"];
         async Task Git(TimeSpan timeout, params string[] args)
         {
             var r = await Proc.RunAsync("git", [.. safe, .. args], job.SourceDir, timeout, ct: ct);
@@ -62,6 +65,7 @@ public sealed class FetchStage(ReconOptions options) : IStage
         }
         await Git(TimeSpan.FromMinutes(1), "init", "--quiet");
         await Git(TimeSpan.FromMinutes(1), "config", "core.hooksPath", ".foreman-no-hooks");
+        await Git(TimeSpan.FromMinutes(1), "config", "core.autocrlf", "false");
         await Git(TimeSpan.FromMinutes(10), "fetch", "--quiet", "--depth", Depth.ToString(), "--no-recurse-submodules", "--no-tags", url, sha);
         await Git(TimeSpan.FromMinutes(5), "checkout", "--quiet", "--detach", "FETCH_HEAD");
 

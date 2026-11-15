@@ -48,7 +48,11 @@ check the same rules with other data.
 - `tasks`: in order, one commit each, each with `done_when` as a check. A bug starts with a `reproduce` task: a test
   that fails on the current code for the reported reason. A feature usually starts with one too.
 - `allowed_edits`: only if the change truly needs to edit a protected path (an existing test whose expectation the
-  task changes, a lockfile for a dependency the task adds), with the reason. Usually empty.
+  task changes, a lockfile for a dependency the task adds), with the reason. Usually empty. When the task changes
+  behaviour, search the tests for what pins the old behaviour (grep for the function, the class, the old values or
+  messages) before you finish: each assertion you find either still holds under your requirements, or its test file
+  goes here with the assertion that changes and why. Then don't also require that test to keep passing unchanged:
+  the implementer stops on a PRP that forbids editing a test the change must break.
 
 Code adds the rest of the PRP: the validation commands recon verified, the known-red tests, the files not to edit,
 the definition of done.

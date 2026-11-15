@@ -10,7 +10,7 @@ The design, and what was taken from published coding agents and research, is in
 
 ## Status
 
-Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done.
+Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done; milestone 3 (implement and verify, one candidate) done.
 
 | Stage | What it does | Output |
 |---|---|---|
@@ -25,19 +25,24 @@ Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done.
 | dossier | Four read-only **readers** in parallel (architecture, conventions, where the task lives, risks) with `list_files`, `read_file`, `search`, `code_map`, `find_symbol`; every file, line and symbol they cite is checked by code before a section is accepted. Plus a short rules file for the implementer, built by code from verified facts. | `dossier/dossier.md`, `dossier/AGENTS.md` |
 | clarify | The under-specification detector (Claude Opus 5.5) after recon: reads the code before asking; each gap is closed by the repository (with evidence), assumed (default stated) or asked (at most 5, each with a default in the client's language). Code checks the rules. | `clarify/questions.md` (a draft for the human to send), `clarify.md`, `questions.json` |
 | spec | The PRP (Claude Opus 5.5): requirements, each with how it is checked (acceptance test, existing tests, a command, or review), the public interface, examples, decisions, where the change goes, tasks. Code enforces the done contract and coverage of the brief and of the client's answers, checks files and symbols, and adds the verified commands. Waits for the client's answers; the human marks it Ready. | `spec/prp.md`, `prp.json`, `ready.json` |
+| implement | The **implementer** (Claude Opus 5.5) on a copy of the set-up repository, network off, unprivileged: `bash`, a str_replace editor, `run_tests` against the baseline, `submit`, `give_up`. Claude Code runs on the host with no built-in tools; only its tools act in the sandbox, so no credential goes into it. `submit` is checked by code (diff guard, every requirement accounted for, a test when the PRP needs one, no regression). At most 2 fix rounds with the gate's and the reviewer's findings. | `implement/implement.json`, `patch.diff`, `pr.md` |
+| verify | On fresh copies with only the patch: the diff guard (edited or deleted tests, skip markers, CI, test config, lockfiles), pass-to-pass against the baseline (a regression must fail twice), the new tests fail before the change and pass with it, the CI linters before and after, gitleaks on added lines. No model. | `verify/verify.json` |
+| review | A fresh **reviewer** (Claude Opus 5.5) sees the PRP, the diff, the gate's facts and the implementer's account: a verdict per requirement with evidence; each finding must cite a PRP rule or an added line, checked by code; minor findings are notes, never sent back. | `verify/round-N/review.json` |
 
 Runs so far, failures and fixes included: [docs/recon-runs.md](docs/recon-runs.md). Nine repositories in .NET,
 TypeScript, JavaScript, Python, Go and Rust; the agent was needed for three of them and took 3–4 tool calls and
 under 90 seconds each.
 
-Every agent (intake, the environment agent, the readers, clarify, spec) works through a **toolbox**, and two interchangeable model loops connect a model to it: `api` (our own loop on the
+Every agent (intake, the environment agent, the readers, clarify, spec, the implementer, the reviewer) works through a **toolbox**, and two interchangeable model loops connect a model to it: `api` (our own loop on the
 Anthropic C# SDK, with prompt caching, effort and refusal fallbacks; needs an API key, not run yet) and
 `claude-code` (Claude Code headless on a subscription, built-in tools off, the sandbox tools through Foreman's MCP
 server). The model never runs anything on the host.
 
 Measured: localization on 10 real fixed issues ([results](evals/localization/results.md)), intake on 16 labelled tasks ([results](evals/intake/results.md)), clarify on 14 ([results](evals/clarify/results.md)), spec on 14 ([results](evals/spec/results.md)). Intake, clarify and spec runs, failures and fixes: [docs/planning-runs.md](docs/planning-runs.md).
 
-Next: milestone 3, implement and verify (one candidate, the full gate, the reviewer, the fix loop).
+Implement end to end on 9 real fixed issues (Python, TypeScript, C#), graded with the maintainers' own tests from each fix: verified by Foreman's gate 6/9, all in the first round; resolved 5/5 of the gradeable ones; the other 3 stopped on a contradictory PRP instead of hacking around it ([results](evals/implement/results.md)). Runs, failures and fixes: [docs/implement-runs.md](docs/implement-runs.md).
+
+Next: milestone 4, hidden acceptance tests with mutants, parallel candidates, the eval harness with ablations. And the spec: in the implement eval it, not the code, was what stopped the runs.
 
 ## Run
 
@@ -49,11 +54,14 @@ dotnet run --project src/Foreman.Cli -- run <repo> --task task.md [--go]        
 dotnet run --project src/Foreman.Cli -- recon --job <id> --force environment,baseline     # rerun stages
 dotnet run --project src/Foreman.Cli -- answer <id> --set Q1="..." | --defaults          # record the client's answers
 dotnet run --project src/Foreman.Cli -- ready <id>                                        # approve spec/prp.md
+dotnet run --project src/Foreman.Cli -- recon --job <id>                                  # then implement, verify, review
+dotnet run --project src/Foreman.Cli -- verify <id> [--no-review]                         # rerun the gate on implement/patch.diff
 dotnet run --project src/Foreman.Cli -- show <id>
 dotnet run --project src/Foreman.Cli -- eval localization [--readers]                    # 10 real issues, needs gh
 dotnet run --project src/Foreman.Cli -- eval intake --runs 3                              # after eval localization
 dotnet run --project src/Foreman.Cli -- eval clarify --runs 3
 dotnet run --project src/Foreman.Cli -- eval spec
+dotnet run --project src/Foreman.Cli -- eval implement [--only id,id]                     # 9 real issues, hidden tests
 ```
 
 Jobs are stored in `%LOCALAPPDATA%/Foreman/jobs` (or `$FOREMAN_HOME/jobs`).

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- From a Ready PRP to a verified change: implement (stage 5), verify and review (stage 6), the fix loop. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Foreman.Planning\Foreman.Planning.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Foreman.Tests" />
+  </ItemGroup>
+</Project>

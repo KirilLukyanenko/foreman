@@ -53,17 +53,19 @@ public static partial class BaselinePlanner
         var restore = string.Join("\n", targets.Select(t => $"dotnet restore {Sh.Quote(t)}"));
         var build = string.Join("\n", targets.Select(t => $"dotnet build {Sh.Quote(t)} --no-restore -c Debug -nologo"));
 
+        // The test command builds again (incremental and offline: restore ran in setup) rather than --no-build, so
+        // it always tests the code as it is when it runs; after a change, the binaries from setup would be stale.
         string test;
         if (s.TestRunner == "mtp")
         {
             notes.Add("global.json selects Microsoft.Testing.Platform: TRX needs the TrxReport extension in the test projects");
             test = string.Join("\n", targets.Select(t =>
-                $"dotnet test {(t.EndsWith("proj", StringComparison.OrdinalIgnoreCase) ? "--project" : "--solution")} {Sh.Quote(t)} --no-build --report-trx --results-directory \"$OUT\""));
+                $"dotnet test {(t.EndsWith("proj", StringComparison.OrdinalIgnoreCase) ? "--project" : "--solution")} {Sh.Quote(t)} --no-restore --report-trx --results-directory \"$OUT\""));
         }
         else
         {
             test = string.Join("\n", targets.Select(t =>
-                $"dotnet test {Sh.Quote(t)} --no-build --logger \"trx;LogFilePrefix=tests\" --results-directory \"$OUT\""));
+                $"dotnet test {Sh.Quote(t)} --no-restore --logger \"trx;LogFilePrefix=tests\" --results-directory \"$OUT\""));
         }
 
         // Test projects for an older runtime still run on the image's newer one.

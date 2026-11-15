@@ -158,7 +158,7 @@ public class BaselinePlannerTests
         Assert.Equal("mcr.microsoft.com/dotnet/sdk:10.0", plan.Image);
         Assert.Equal(["restore", "build"], plan.Setup.Select(s => s.Name));
         Assert.Equal(Foreman.Sandbox.Network.None, plan.Setup[1].Network);
-        Assert.Contains("dotnet test 'My App.sln' --no-build --logger \"trx", plan.TestScript);
+        Assert.Contains("dotnet test 'My App.sln' --no-restore --logger \"trx", plan.TestScript);
     }
 
     [Fact]

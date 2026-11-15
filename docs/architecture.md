@@ -206,8 +206,9 @@ repositories where the right behaviour is known, and the 10 real issues, which w
 lot there is over-asking. 143/144 checks over 42 runs; on the real issues 27 of 30 runs asked nothing (the three
 that asked were on MediatR, where the question is real); about $0.19 and under a minute per task.
 
-During implementation the agent will ask through an `ask_client` MCP tool; the orchestrator answers from the spec
-and defaults or pauses the job for the human (later).
+During implementation the agent doesn't ask the client: the Ready PRP is the answer, and when it isn't enough the
+implementer stops with `give_up` for the human. An `ask_client` tool that answers from the spec or pauses the job is
+later.
 
 ### 3. Spec (built)
 Model: Claude Opus 5.5, with the readers' read-only tools and `submit_spec`. The comp-ledger PRP template, cut to one
@@ -247,29 +248,68 @@ A separate session sees only the PRP and public interfaces and writes black-box 
 reach. The tests are tested: they must fail on the base commit, and they must catch a few deliberately broken
 versions of the code (mutants), so that they can't pass trivially. Their checksums are recorded.
 
-### 5. Implement (later)
-Claude Code headless (`claude -p --output-format stream-json`) in the sandbox, with explicit settings
-(the repository's own `.claude/` is not loaded), `--permission-mode dontAsk` and an allowlist, `--max-budget-usd`,
-`--max-turns`, and Foreman's MCP server (repo map, dossier, baseline, `ask_client`) through `--mcp-config`.
-LSP plugins give it go-to-definition and references. It writes its own visible reproduction test first, and the
-prompt tells it to stop and report if a test looks wrong (ImpossibleBench: this cut test hacking from 93% to 1%).
+### 5. Implement (built: one candidate)
+Model: Claude Opus 5.5. The implementer runs like every other agent here: Claude Code headless on the host (or our
+own API loop) with **no built-in tools**, its only tools served by Foreman's MCP server and all acting **inside the
+sandbox**. This replaces the earlier plan of running Claude Code itself in the sandbox: that needs the model
+credential inside the container, and the rules say no secret goes into one. Here the credential stays with the
+driver on the host, and the code runs where nothing can reach the network.
+
+- **The workspace** is a copy of the baseline's volume (the set-up repository: dependencies installed, built), so
+  nothing is set up again; a session container on it runs as the unprivileged user, no capabilities, **network off**.
+  Git runs in the container with hooks off; the starting state is committed and its sha recorded on the host, and the
+  change is the diff against it (caches and build outputs excluded).
+- **Tools**: `bash` and `edit` (view / create / str_replace / insert, the editor Claude models are trained on; files
+  move as base64, UTF-8 checked, CRLF kept), `run_tests` (the baseline's verified command, compared with the
+  baseline: regressions, new tests, known-red), `read_dossier`, `submit`, `give_up`. Bash plus a str_replace editor
+  is the standard strong harness (mini-swe-agent, Anthropic's SWE-bench setup); more tools changed little in ablations.
+- **The first message** carries the Ready PRP, the rules file and how the change will be checked. The prompt: read,
+  reproduce first (the test from the PRP's first task must fail for the stated reason), the smallest change, test,
+  submit; never weaken a test; if the PRP or a test looks wrong, `give_up` with what a human must decide instead of
+  working around it (ImpossibleBench: telling the agent to stop cut test hacking from 93% to 1%).
+- **`submit` is checked by code** before it is accepted: the diff guard, every requirement accounted for (`done`
+  with where, or `not_done` with why), a test in the change when the PRP needs one, and the whole suite with no
+  regression and no failing new test. Problems go back; the third submission is kept with warnings.
+- The stage refuses a PRP that isn't Ready or changed after approval.
 
 **Parallel candidates (later, behind a flag):** N = 3–5 independent attempts, each with its own writer and
 sandbox. Claude 4's launch reported SWE-bench Verified 72.5% → 79.4% from parallel attempts filtered by regression
 tests and picked by a scorer.
 
-### 6. Verify (later)
-Run by the orchestrator, never by the agent:
-- **pass-to-pass:** every baseline test that passed (and isn't flaky) still passes;
-- **fail-to-pass:** the hidden acceptance tests pass;
-- the repository's own linter and formatter;
-- **diff guard:** edits to existing tests, CI config, lockfiles or test config fail the gate unless the spec allows
-  them; changes outside the located area need a reason in the PR;
-- gitleaks on the diff, osv-scanner if dependencies changed;
-- **reviewer** with fresh context, given only the spec and the diff, rule by rule (comp-ledger's reviewer). Its
-  findings pass through a scope filter before going back, so review can't pull in scope creep.
+### 6. Verify (built)
+Run by the orchestrator, never by the agent, on **fresh copies of the baseline volume with only the patch carried
+over**: whatever the agent did elsewhere in its sandbox (a patched installed package, a forged test report) doesn't
+come along.
+- **diff guard** (code, unit-tested): deleting or editing existing tests, CI config, test config (`conftest.py`,
+  `pytest.ini`, `jest.config.*`...), lockfiles, generated or vendored files and agent instruction files fail the gate
+  unless the PRP allows the path (`allowed_edits` or a touch point); skip and focus markers (`@pytest.mark.skip`,
+  `it.only`, `[Fact(Skip=...)]`...) fail it anywhere in tests. Rewritten assertions, manifests and files outside the
+  touch points are allowed but reported to the reviewer. Linters and SAST rules don't look for these edits.
+- **pass-to-pass:** every test that passed in all baseline runs still passes; failed, skipped and missing all count,
+  and a regression must fail twice (a flake the baseline didn't catch is not blamed on the change);
+- **fail-to-pass** of the implementer's own tests: they pass with the change, and on a second copy with only the test
+  files applied they must not pass; a PRP with an acceptance-tested requirement or a reproduction task needs at least
+  one such test. The hidden acceptance tests (stage 4) will add the independent check;
+- the CI lint commands, before and after: only one that passed before the change can fail it (in an offline sandbox
+  many can't run at all, and that is reported, not hidden);
+- gitleaks on each changed file, counting only findings on added lines (values redacted);
+- **reviewer** (Claude Opus 5.5), a fresh session that sees only the PRP, the diff, what the gate measured and the
+  implementer's account (as a claim to check): a verdict per requirement with evidence, and findings that each name
+  what they hold the change to: a requirement, an anti-pattern, a gotcha or a decision of the PRP that exists, the
+  new tests, scope, or a defect on a line the change adds. Code checks all of that and that the verdict agrees with
+  the findings; **minor findings are notes, never sent back**, so review can't pull in scope creep.
 
-At most 2 fix rounds; after that, restart in parallel or stop with an honest report.
+**The fix loop:** what fails (the gate's blockers, the reviewer's blocker and major findings) goes to a new
+implementer session in the same workspace; at most 2 fix rounds, then the job stops with an honest report
+(`implement/implement.json`, `verify/verify.json`). A verified change leaves `implement/patch.diff` and `pr.md`;
+nothing is pushed or sent. `foreman verify <job>` reruns the gate on the patch.
+
+**Measured** ([evals/implement](../evals/implement/results.md), 9 real fixed issues in Python, TypeScript and C#,
+graded with the maintainers' own tests from each fix, SWE-bench style): every change the gate verified and that
+could be graded was resolved, 5 of 5; the gate verified 6 of 9, each in the first round, at about $0.40–0.80 for the
+implementer and the reviewer. The other 3 stopped honestly in the first round on a PRP that contradicted the code or
+its own tests; the implementer named the line each time. So the weak link is now the spec, not the code. Getting
+there found that environments must test the code as it is when the tests run (see `docs/implement-runs.md`).
 UI tasks (later): Playwright checks with screenshots attached to the PR; SWE-Lancer grades freelance work end to end.
 
 ### 7. Select and deliver (later)
@@ -289,14 +329,14 @@ line to `metrics/runs.jsonl`. Definitions are written before the first run, as i
 | Durable workflow engine | Microsoft Agent Framework workflows (GA in .NET since April 2026, checkpointing and human-in-the-loop) is the upgrade path. Temporal: strongest durability, but heavy for one developer and no official .NET AI integration. Dapr Workflow: no. | later / no |
 | Sandbox | Docker, one named volume per job (the untrusted code never writes to the host), non-root user, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, wall-clock timeout. Network on only for setup, off for build and tests. | now |
 | Egress allowlist | A proxy that lets only package registries and the model API through during setup and implementation. | later |
-| Secrets | No keys, tokens or git credentials in the sandbox except the model credential the coding agent needs; the orchestrator applies the final patch. Traces record metadata, not content, by default. | now |
+| Secrets | No keys, tokens or git credentials in the sandbox, the model credential included: every agent's driver runs on the host and only its tools act in the sandbox. The orchestrator takes the final patch. Traces record metadata, not content, by default. | now |
 | Tracing | OpenTelemetry with the GenAI semantic conventions (still "Development" status, version pinned): one trace per job, a span per stage; Anthropic C# SDK spans (`com.anthropic.sdk.csharp*`); Claude Code stream-json events turned into child spans. Local backend: .NET Aspire dashboard. | now (spans), later (exporters) |
 | Cost | Usage including cache reads and writes on every call; cost per completed task, not per request. | now |
 | Prompts | Prompts are files in the repository; their content hash is recorded on spans and in eval results. | now |
 | Models | Pinned ids. Defaults: Opus 5.5 for clarify, spec and review; Sonnet 5.5 for readers; Haiku 5.5 for intake and reports; Claude Code's default for implementation. Effort set per stage. "Stronger model at lower effort" is measured before any cascade. | now |
 | Claude API features | Structured outputs, prompt caching (stable prefix: system prompt, tool list, dossier), adaptive thinking with explicit effort, refusal handling with server-side fallbacks, Batch API for eval sweeps. Context editing and compaction only if an API-side loop gets long. No sampling parameters exist any more, so reproducibility comes from repeated runs and confidence intervals. | now / later |
 | Budgets and kill switch | Per stage and per job: dollars, turns, wall clock; a global cap; a flag that disables the coding stage. | now |
-| MCP | Foreman's own MCP server (C# SDK 2.x, spec 2026-07-28) gives the coding agent recon tools and `ask_client`. | later |
+| MCP | Foreman's own MCP server (C# SDK 2.x, spec 2026-07-28) serves each agent's toolbox to Claude Code, the implementer's sandbox tools included. `ask_client` during implementation is later: the PRP is the answer, and `give_up` stops for the human. | now |
 | A2A | No: no agents from other vendors to talk to; worth a mention, not the complexity. | no |
 | Claude Managed Agents | No for now: the point is to show our own sandbox and loop. Mention as the hosted alternative. | no |
 | Evals | Per-stage offline harness with fixed inputs; code graders first (tests), model graders second, calibrated against human labels; 3–5 runs per case; pass@1, pass@k, pass^k with Wilson intervals; paired comparison between versions; a smoke set on every PR and the full set nightly. Ablations: reviewer on/off, N candidates, repo map on/off. | milestone 4 |
@@ -307,7 +347,7 @@ line to `metrics/runs.jsonl`. Definitions are written before the first run, as i
 
 1. **Recon**: triage, environment, baseline, code map, dossier, security scans, on five real repositories.
 2. **Intake, clarify, spec**: from task text to a Ready PRP with a done contract.
-3. **Implement and verify**: one candidate, the full gate, the reviewer, the fix loop.
+3. **Implement and verify**: one candidate, the full gate, the reviewer, the fix loop. Done.
 4. **Acceptance tests, parallel candidates, evals**: hidden tests with mutants, N candidates with selection, the
    eval harness with ablations, README with the numbers.
 5. **Deliver and Tower**: PR and client report, approvals from the phone, one real task end to end.

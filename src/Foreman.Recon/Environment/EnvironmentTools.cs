@@ -130,6 +130,10 @@ public sealed partial class EnvironmentTools : IToolbox
     {
         if (Gate() is { } stop) return stop;
         if (!IsAllowedImage(image)) return Logged("submit", new { image }, new ToolOutput($"refused: {image} is not an allowed image", true));
+        if (WorkingTree.Problems(setupScript, testScript) is { Count: > 0 } stale)
+            return Logged("submit", new { image, setupScript, testScript }, new ToolOutput(
+                "refused before verification: later stages change the code and run test_script again without setup, so it must test the code " +
+                "as it is when it runs.\n- " + string.Join("\n- ", stale), true), 1);
 
         var spec = new EnvironmentSpec(_stack, "agent", image,
             [new EnvStep("setup", setupScript, Network: true, AsRoot: true, TimeoutMinutes: 30)],

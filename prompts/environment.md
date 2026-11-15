@@ -23,6 +23,11 @@ dependencies, tools, builds, pre-downloaded data, has to come from `setup_script
   explain the failures in `expected_failures_reason`.
 - It doesn't change the repository's source code or tests. Configuration, environment variables, packages and files
   outside the repository are fine; edits to tracked files are not.
+- It tests the code as it is when the tests run. Later, Foreman changes the code and runs `test_script` again
+  without running setup, so the tests must not use a copy made during setup: install Python projects editable
+  (`pip install -e .`), let `dotnet test` build (`--no-restore`, not `--no-build`), and put any build step the tests
+  depend on (compiling TypeScript, a bundle) in `test_script` or make the tests read the sources. `submit` refuses
+  the first two.
 - The test report goes to `"$OUT"` (the variable is set during verification; create nothing outside it for the
   report). Formats Foreman reads: JUnit XML, TRX, Jest JSON. For example: `pytest --junitxml="$OUT/pytest.xml"`,
   `dotnet test --logger trx --results-directory "$OUT"`, `jest --json --outputFile="$OUT/jest.json"`,

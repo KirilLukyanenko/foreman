@@ -181,6 +181,26 @@ public sealed class DockerSandbox
         if (!r.Ok) throw new InvalidOperationException($"resetting ownership failed: {r.Tail(5)}");
     }
 
+    /// <summary>
+    /// Recreates this volume as a copy of another one: the baseline's set-up repository (installed packages, build
+    /// outputs) without setting it up again. Each candidate and each verification gets its own copy, so nothing one
+    /// of them does can reach another. Ownership is kept, so the copy runs as the unprivileged user like the original.
+    /// </summary>
+    public async Task CloneFromAsync(string sourceVolume, string image)
+    {
+        await Proc.RunAsync("docker", ["volume", "rm", "-f", Volume]);
+        await Docker("volume", "create", Volume);
+        var r = await Proc.RunAsync("docker",
+            ["run", "--rm", "--network", "none", "--user", "0:0", "--cap-drop", "ALL",
+             "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER", "--cap-add", "FSETID",
+             "-v", $"{sourceVolume}:/from:ro", "-v", $"{Volume}:/to", image, "cp", "-a", "/from/.", "/to/"],
+            timeout: TimeSpan.FromMinutes(15));
+        if (!r.Ok) throw new InvalidOperationException($"copying volume {sourceVolume} failed: {r.Tail(5)}");
+    }
+
+    public static async Task<bool> VolumeExistsAsync(string volume) =>
+        (await Proc.RunAsync("docker", ["volume", "inspect", volume], timeout: TimeSpan.FromSeconds(30))).Ok;
+
     public async Task RemoveAsync() => await Proc.RunAsync("docker", ["volume", "rm", "-f", Volume]);
 
     internal static IEnumerable<string> PrivilegeArgs(bool asRoot)

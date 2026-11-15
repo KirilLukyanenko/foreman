@@ -17,5 +17,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Foreman.Tests" />
     <InternalsVisibleTo Include="Foreman.Planning" />
+    <InternalsVisibleTo Include="Foreman.Implement" />
   </ItemGroup>
 </Project>

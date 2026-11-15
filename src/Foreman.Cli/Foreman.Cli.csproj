@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Foreman.Agents\Foreman.Agents.csproj" />
     <ProjectReference Include="..\Foreman.Evals\Foreman.Evals.csproj" />
+    <ProjectReference Include="..\Foreman.Planning\Foreman.Planning.csproj" />
   </ItemGroup>
 </Project>

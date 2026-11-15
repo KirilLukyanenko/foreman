@@ -1,6 +1,8 @@
 using Foreman.Agents;
 using Foreman.Core;
 using Foreman.Evals;
+using Foreman.Planning.Clarify;
+using Foreman.Planning.Intake;
 using Foreman.Recon;
 using Foreman.Recon.Baseline;
 using Foreman.Recon.CodeMap;
@@ -12,6 +14,7 @@ using Foreman.Recon.Triage;
 // foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3] [--agent auto|claude-code|api|none]
 //               [--model id] [--effort low|medium|high] [--budget usd] [--home dir]
 // foreman recon --job <id> [--force stage,stage]       resume or rerun stages of an existing job
+// foreman answer <id> [--set Q1=text ...] [--defaults]   record the client's answers to clarify's questions
 // foreman show <id>                                     summary of a job's recon
 // foreman mcp environment --job <id> --stack <s> --image <i>  MCP server for an agent's toolbox (stdio)
 // foreman mcp reader --job <id> --section <name>
@@ -25,7 +28,10 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 switch (args.FirstOrDefault())
 {
     case "recon":
+    case "run":
         return await Recon();
+    case "answer":
+        return Answer(args.ElementAtOrDefault(1));
     case "eval":
         return await Eval();
     case "show":
@@ -40,8 +46,12 @@ switch (args.FirstOrDefault())
               foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3]
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
-              foreman recon --job <id> [--force fetch,triage,security,codemap,environment,baseline,dossier]
+                            [--intake-model id] [--clarify-model id] [--go]
+              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify]
+              foreman answer <job id> [--set Q1="..."]... [--defaults]
               foreman show <job id>
+              foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
+              foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -70,8 +80,11 @@ async Task<int> Recon()
     Console.WriteLine($"job {job.Id}\n    {job.Dir}\n    agents: {(driver is null ? "off" : $"{driver.Name}; environment on {Arg("--model") ?? driver.Model}, readers on {Arg("--reader-model") ?? DossierOptions.DefaultModel}")}");
 
     var force = Arg("--force")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+    var hasTask = job.Manifest.TaskFile is not null;
     IStage[] stages =
     [
+        // Intake and the go/no-go gate need no repository: they run first, before recon spends anything.
+        .. hasTask ? new IStage[] { new IntakeStage(driver, new IntakeOptions(Arg("--intake-model") ?? IntakeOptions.DefaultModel), Console.WriteLine), new GoStage(args.Contains("--go"), Console.WriteLine) } : [],
         new FetchStage(options),
         new TriageStage(),
         new SecurityStage(options.Limits, Console.WriteLine),
@@ -80,6 +93,7 @@ async Task<int> Recon()
         new BaselineStage(options, Console.WriteLine),
         new DossierStage(driver, new DossierOptions(Arg("--reader-model") ?? DossierOptions.DefaultModel,
             Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries)), Console.WriteLine),
+        .. hasTask ? new IStage[] { new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine) } : [],
     ];
     // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
     if (Arg("--stages")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal) is { } only)
@@ -92,7 +106,9 @@ async Task<int> Recon()
 
 async Task<int> Eval()
 {
-    if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: only 'localization' exists so far"); return 2; }
+    if (args.ElementAtOrDefault(1) == "intake") return await EvalIntake();
+    if (args.ElementAtOrDefault(1) == "clarify") return await EvalClarify();
+    if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake' or 'clarify'"); return 2; }
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
     var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
     var cases = LocalizationEval.ReadCases(casesFile);
@@ -107,6 +123,40 @@ async Task<int> Eval()
     return 0;
 }
 
+async Task<int> EvalIntake()
+{
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "intake", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = IntakeEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var driver = Driver() ?? throw new InvalidOperationException("eval intake needs a model");
+    var runs = int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 1;
+    var report = await new IntakeEval(home, driver, Arg("--intake-model"), Console.WriteLine).RunAsync(cases, casesFile, runs, cts.Token);
+    File.WriteAllText(Path.Combine(outDir, "results.json"), Json.Write(report));
+    var md = IntakeEval.Markdown(report, cases);
+    File.WriteAllText(Path.Combine(outDir, "results.md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
+async Task<int> EvalClarify()
+{
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "clarify", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = ClarifyEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var driver = Driver() ?? throw new InvalidOperationException("eval clarify needs a model");
+    var runs = int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 1;
+    var report = await new ClarifyEval(home, driver, Arg("--clarify-model"), Console.WriteLine).RunAsync(cases, casesFile, runs, cts.Token);
+    File.WriteAllText(Path.Combine(outDir, "results.json"), Json.Write(report));
+    var md = ClarifyEval.Markdown(report, cases);
+    File.WriteAllText(Path.Combine(outDir, "results.md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
 IToolbox Toolbox(string? kind)
 {
     var job = Job.Open(home, Required("--job"));
@@ -114,6 +164,8 @@ IToolbox Toolbox(string? kind)
     {
         "environment" => new EnvironmentTools(job, Required("--stack"), job.ReadJson<TriageReport>("triage", "triage.json").RemovedAgentConfig, startImage: Required("--image")),
         "reader" => new ReaderTools(job, Required("--section")),
+        "intake" => new IntakeTools(job),
+        "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),
         _ => throw new ArgumentException($"unknown toolbox '{kind}'"),
     };
 }
@@ -133,6 +185,31 @@ IAgentDriver? Driver()
     };
 }
 
+int Answer(string? id)
+{
+    if (id is null) { Console.Error.WriteLine("answer: job id required"); return 2; }
+    var job = Job.Open(home, id);
+    var given = new Dictionary<string, string>(StringComparer.Ordinal);
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+        if (args[i] != "--set") continue;
+        var eq = args[i + 1].IndexOf('=');
+        if (eq <= 0) { Console.Error.WriteLine($"answer: --set needs Q1=text, got '{args[i + 1]}'"); return 2; }
+        given[args[i + 1][..eq].Trim()] = args[i + 1][(eq + 1)..].Trim();
+    }
+    try
+    {
+        foreach (var a in Answers.Record(job, given, args.Contains("--defaults")))
+            Console.WriteLine($"{a.Id} ({a.Source}): {a.Value}");
+        return 0;
+    }
+    catch (InvalidOperationException e)
+    {
+        Console.Error.WriteLine($"answer: {e.Message}");
+        return 1;
+    }
+}
+
 int Show(string? id)
 {
     if (id is null) { Console.Error.WriteLine("show: job id required"); return 2; }
@@ -141,6 +218,19 @@ int Show(string? id)
     foreach (var (stage, state) in job.ReadState())
         Console.WriteLine($"{stage,-12} {state.Status}{(state.Error is null ? "" : $": {state.Error}")}");
 
+    if (File.Exists(Path.Combine(job.Dir, "intake", "brief.json")))
+    {
+        var b = job.ReadJson<Brief>("intake", "brief.json");
+        var r = job.ReadJson<IntakeReport>("intake", "intake.json");
+        Console.WriteLine($"""
+
+            intake      {b.Title}
+                        {b.TaskType}, {b.Kind.Replace('_', ' ')}, client language {b.Language}; {b.Fit.Verdict.Replace('_', '-')}, {b.Fit.Risk} risk
+                        {b.Deliverables.Count} deliverables, {b.Acceptance.Count(c => c.Explicit)} explicit and {b.Acceptance.Count(c => !c.Explicit)} implied acceptance criteria, {b.Unknowns.Count} unknowns, {b.EmbeddedInstructions.Count(e => e.Audience != "none")} embedded instructions
+                        {r.Agent.Model} via {r.Agent.Driver}, {r.Submissions} submissions{(r.Warnings.Count > 0 ? $", {r.Warnings.Count} warnings" : "")}, ${r.Agent.CostUsd:0.000}{(r.Agent.CostIsEstimate ? " (estimate)" : "")}, {r.Agent.Seconds:0} s
+            """);
+        foreach (var reason in b.Fit.Reasons.Take(4)) Console.WriteLine($"            - {reason}");
+    }
     if (File.Exists(Path.Combine(job.Dir, "triage", "triage.json")))
     {
         var t = job.ReadJson<TriageReport>("triage", "triage.json");
@@ -194,6 +284,13 @@ int Show(string? id)
         foreach (var r in d.Readers)
             Console.WriteLine($"            {r.Section,-13} {(r.Accepted ? "accepted" : "MISSING")}, {r.Words} words, {r.Agent.ToolCalls} tool calls{(r.Warnings > 0 ? $", {r.Warnings} warnings" : "")}");
         foreach (var x in d.Skipped) Console.WriteLine($"            skipped {x}");
+    }
+    if (File.Exists(Path.Combine(job.Dir, "clarify", "clarify.json")))
+    {
+        var c = job.ReadJson<ClarifyReport>("clarify", "clarify.json");
+        var answered = File.Exists(Path.Combine(job.Dir, "clarify", "answers.json"));
+        Console.WriteLine($"clarify     {c.Verdict}: {c.Questions} questions, {c.Assumptions} assumptions, {c.FromRepository} answered by the code{(c.HadDossier ? "" : " (no dossier)")}; {c.Agent.ToolCalls} tool calls, ${c.Agent.CostUsd:0.00}{(c.Agent.CostIsEstimate ? " (estimate)" : "")}, {c.Agent.Seconds:0} s");
+        Console.WriteLine($"            {(c.Questions == 0 ? "nothing to send" : answered ? "answers recorded" : $"waiting for answers: send clarify/questions.md, then foreman answer {job.Id}")}");
     }
     return 0;
 }

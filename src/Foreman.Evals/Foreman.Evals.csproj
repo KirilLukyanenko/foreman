@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="..\Foreman.Recon\Foreman.Recon.csproj" />
+    <ProjectReference Include="..\Foreman.Planning\Foreman.Planning.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Foreman.Tests" />

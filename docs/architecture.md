@@ -30,7 +30,8 @@ Status: design, 14 November 2026. Each capability below is marked **now** (in th
 ```
  task text + repository
         │
- 0  Intake ─────────────▶ job.json           goal, deliverables, acceptance hints, task type, unknowns, go/no-go
+ 0  Intake ─────────────▶ brief.json         goal, deliverables, acceptance hints, task type, unknowns, go/no-go
+    Go (no model) ──────▶ go.json            stops on a no-go unless the human says --go
  1  Recon
     1a Triage (no model) ─▶ triage.json        stacks, CI commands, instruction files, install scripts, git facts
                             security.json      secrets, vulnerable dependencies, SAST findings
@@ -52,10 +53,29 @@ Status: design, 14 November 2026. Each capability below is marked **now** (in th
 
 ## 3. Stages
 
-### 0. Intake (now)
-Model: Claude Haiku 5.5, structured output (`output_config.format`). Turns free text into `job.json`: goal,
-deliverables, constraints, deadline, budget, explicit and implicit acceptance criteria, task type (bug, feature,
-refactor, infrastructure, UI), unknowns, and a go/no-go estimate with risk. Gate: JSON schema.
+### 0. Intake (built)
+Model: Claude Haiku 5.5. Turns free text into `intake/brief.json` (`job.json` is the job's manifest): goal,
+deliverables, constraints, deadline, budget, explicit and implied acceptance criteria, task type (bug, feature,
+refactor, infrastructure, UI, docs), the client's language, unknowns, what Foreman can't do itself (calls,
+production access, publishing), text in the task aimed at an AI or at the bidder, and a go/no-go estimate with
+risk. Intake needs no repository, so it runs before recon spends anything.
+
+- **Code first.** `TaskFacts` finds links, file paths, code spans, stack traces, invisible and bidirectional
+  characters, and phrases aimed at an AI or at whoever replies ("if you are an AI, start your proposal with...",
+  "ignore previous instructions", "you must run..."). The task goes to the model between a delimiter derived from
+  its hash, so the text can't close its own tag.
+- **One checked tool instead of structured output.** The brief is the input of a single `submit_brief` tool. A
+  JSON schema guarantees only the shape; the gate needs the meaning: every explicit deliverable, constraint,
+  deadline, budget and criterion must quote the task word for word (compared after folding case, quotes, dashes,
+  Markdown and whitespace; `…` skips words), and every phrase code flagged must be classified (`bidder`: shown to
+  the human writing the proposal; `ai_agent`: ignored; `none`: a false alarm). Problems go back to the model, as
+  in the dossier; a third attempt is kept with warnings. The same tool works on both drivers.
+- **Code has the last word on caution.** The model's verdict can only be raised: invisible characters or text
+  aimed at an AI agent make a "go" a "review". The `go` stage stops the pipeline on a no-go unless the human
+  passes `--go`.
+
+Measured on 16 labelled tasks × 3 runs (`foreman eval intake`, [results](../evals/intake/results.md)): 237/237
+checks, 41 of 48 runs accepted on the first submission, about $0.002 and 15 s per task.
 
 ### 1. Recon (built: 1a–1e and the security scans)
 
@@ -159,12 +179,35 @@ linters, commit style), and the task's top locations. An ETH study (arXiv 2602.1
 generated context files lowered success and raised cost by over 20%; the rules file stays at a few hundred tokens,
 and the long dossier is a document the agent reads on demand, not auto-loaded context.
 
-### 2. Clarify (later)
-A separate under-specification detector, not a "please ask questions" prompt: in "Ask or Assume?" (EMNLP 2026
-Findings) a detector raised the resolve rate on under-specified SWE-bench tasks from 61.2% to 69.4%, while a
-hard-coded ask prompt hurt some models. Every question carries a default answer so the client can reply "yes".
-During implementation the agent can ask through an `ask_client` MCP tool; the orchestrator answers from the spec
-and defaults or pauses the job for the human.
+### 2. Clarify (built)
+A separate under-specification detector, not a "please ask questions" prompt: in
+[Ask or Assume?](https://www.alphaxiv.org/abs/2603.26233) (EMNLP 2026 Findings) a separate detector raised the
+resolve rate on under-specified SWE-bench tasks from 61.2% to 69.4%, while forcing the agent to ask hurt some
+models; [Ambig-SWE](https://arxiv.org/abs/2502.13069) (ICLR 2026) found interaction helps a lot on
+under-specified tasks but most models can't tell those from well-specified ones. Model: Claude Opus 5.5.
+
+Clarify runs after recon, so it reads the code before asking. Its tools are the dossier readers' read-only tools
+and `submit_gaps`. Every gap gets one of three resolutions:
+- `repository`: the code answers it (existing behaviour, conventions, tests, config), with files and lines as
+  evidence, checked by code;
+- `assume`: a sensible default, or a wrong guess is cheap to fix in review; the default is stated;
+- `ask`: different answers lead to different deliverables and a wrong guess means a rework. At most 5, high or
+  medium impact only, each with a default in the client's language so the client can answer "yes".
+
+Code checks the rules: the question limit, defaults present, evidence that exists, a verdict that agrees with the
+questions, and questions in the client's language (by script for Cyrillic languages and English). Outputs:
+`questions.md` (a draft in the client's language for the human to edit and send; Foreman never sends it),
+`clarify.md` (every gap, how it was closed, the evidence) and `questions.json`. The human records the replies with
+`foreman answer <job> --set Q1="..."` or accepts the defaults with `--defaults`; the spec stage reads
+`answers.json`.
+
+Measured with `foreman eval clarify` ([results](../evals/clarify/results.md)): tasks written against real
+repositories where the right behaviour is known, and the 10 real issues, which were fixed as written, so asking a
+lot there is over-asking. 143/144 checks over 42 runs; on the real issues 27 of 30 runs asked nothing (the three
+that asked were on MediatR, where the question is real); about $0.19 and under a minute per task.
+
+During implementation the agent will ask through an `ask_client` MCP tool; the orchestrator answers from the spec
+and defaults or pauses the job for the human (later).
 
 ### 3. Spec (later)
 The comp-ledger PRP template, extended with "what the repository already has" from the dossier, and a

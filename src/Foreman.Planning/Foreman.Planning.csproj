@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- From task text to a spec: intake (stage 0), clarify (stage 2), and later the spec itself. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Foreman.Recon\Foreman.Recon.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Foreman.Tests" />
+  </ItemGroup>
+</Project>

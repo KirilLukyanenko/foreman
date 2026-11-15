@@ -49,7 +49,7 @@ public sealed class ApiDriver(string model = ApiDriver.DefaultModel, string effo
 
             for (turns = 1; turns <= maxTurns; turns++)
             {
-                var response = await client.Beta.Messages.Create(new MessageCreateParams
+                var create = new MessageCreateParams
                 {
                     Model = runModel,
                     MaxTokens = 16000,
@@ -58,10 +58,12 @@ public sealed class ApiDriver(string model = ApiDriver.DefaultModel, string effo
                     Tools = definitions,
                     Messages = messages,
                     OutputConfig = new BetaOutputConfig { Effort = ParseEffort(runEffort) },
-                    // If a safety classifier declines, the API retries on a fallback model inside the same call.
-                    Betas = [AnthropicBeta.ServerSideFallback2026_07_01],
-                    Fallbacks = new Default(),
-                }, ct);
+                };
+                // If a safety classifier declines, the API retries on a fallback model inside the same call. Haiku has
+                // no server-side fallback and rejects the field.
+                if (HasServerFallback(runModel))
+                    create = create with { Betas = [AnthropicBeta.ServerSideFallback2026_07_01], Fallbacks = new Default() };
+                var response = await client.Beta.Messages.Create(create, ct);
 
                 usage = usage.Add(response.Usage.InputTokens, response.Usage.OutputTokens,
                     response.Usage.CacheReadInputTokens ?? 0, response.Usage.CacheCreationInputTokens ?? 0);
@@ -132,6 +134,8 @@ public sealed class ApiDriver(string model = ApiDriver.DefaultModel, string effo
                 Required = d.Schema.TryGetProperty("required", out var required) ? required.EnumerateArray().Select(e => e.GetString()!).ToList() : [],
             },
         }).ToList();
+
+    internal static bool HasServerFallback(string model) => !model.StartsWith("claude-haiku", StringComparison.Ordinal);
 
     private static Effort ParseEffort(string effort) => effort switch
     {

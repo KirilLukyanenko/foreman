@@ -42,6 +42,8 @@ public sealed partial class SpecStage(IAgentDriver? driver, SpecOptions? options
         var dir = job.StageDir(Name);
         foreach (var f in new[] { "submission.json", "tools.jsonl", "prp.json", "prp.md", "ready.json", "spec.json" })
             if (File.Exists(Path.Combine(dir, f))) File.Delete(Path.Combine(dir, f));
+        Dirs.Delete(Path.Combine(dir, "lab"));
+        Directory.CreateDirectory(Path.Combine(dir, "lab"));
 
         var message = FirstMessage(job, task, brief, gaps, answers);
         File.WriteAllText(Path.Combine(dir, "task.md"), message, new UTF8Encoding(false));
@@ -55,10 +57,14 @@ public sealed partial class SpecStage(IAgentDriver? driver, SpecOptions? options
             McpArgs: ["spec", "--job", job.Id],
             Model: _options.Model,
             MaxBudgetUsd: _options.MaxBudgetUsd,
-            ReadOutcome: () => File.Exists(SpecTools.ResultFile(job)) ? "submitted" : null);
+            ReadOutcome: () => File.Exists(SpecTools.ResultFile(job)) ? "submitted" : null,
+            // Claude Code ends the MCP server without a graceful shutdown: the lab is removed here.
+            Cleanup: () => SpecLab.RemoveAsync(job));
 
         log?.Invoke($"  spec: {driver.Name}, {_options.Model}");
-        var summary = await driver.RunAsync(request, ct);
+        AgentRunSummary summary;
+        try { summary = await driver.RunAsync(request, ct); }
+        finally { await SpecLab.RemoveAsync(job); }
         job.Event(Name, "agent", new { summary });
         if (!File.Exists(SpecTools.ResultFile(job)))
             throw new InvalidOperationException($"the spec writer delivered nothing: {summary.Outcome}{(summary.Error is null ? "" : $" ({summary.Error})")}");

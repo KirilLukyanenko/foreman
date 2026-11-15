@@ -211,7 +211,7 @@ implementer stops with `give_up` for the human. An `ask_client` tool that answer
 later.
 
 ### 3. Spec (built)
-Model: Claude Opus 5.5, with the readers' read-only tools and `submit_spec`. The comp-ledger PRP template, cut to one
+Model: Claude Opus 5.5, with the readers' read-only tools, a lab (below) and `submit_spec`. The comp-ledger PRP template, cut to one
 change: goal, why, requirements, public interface, Given/When/Then examples, out of scope, decisions, where the
 change goes, gotchas, tasks with "done when", anti-patterns. It runs only once the client's answers are recorded
 (or the defaults accepted).
@@ -235,6 +235,16 @@ as not run; a loud note when none was verified), the known-red tests, generated 
 done and how the PRP is checked beyond the implementer. Protected paths the change truly needs (a new case in an
 existing test file, a lockfile for an added dependency) are listed with reasons in `allowed_edits`, which Verify's
 diff guard will read.
+
+**The lab** (added after the implement eval): a PRP written from reading alone made claims the code didn't bear out
+(no test pins this value; this router returns a match; this expected value holds), and each one stopped the
+implementer. With a verified test environment the writer gets `lab_run` and `lab_run_tests` on a throwaway copy of
+the set-up repository, network off: it checks what the code does now by running it, and for a bug or a feature it
+sketches the change it specifies (the reproduce test and a rough fix) and runs the suite against the baseline. Code
+then holds the PRP to the last run: there must be one, with a new test; every test the sketch breaks is covered by
+`allowed_edits` (its file, or the reason names it); the sketch's new tests pass. The sketch is thrown away, so the
+PRP stays the only contract and the implementer's work stays independent of it. This is the executable-spec idea of
+SpecRover and of reproduction-first agents, moved one stage earlier.
 
 The PRP is a draft until the human runs `foreman ready`, which records the hashes of `prp.md` and `prp.json`; a
 hand edit to `prp.md` is kept (the status line changes in place) and marked, and `prp.md` is then the contract.
@@ -306,10 +316,11 @@ nothing is pushed or sent. `foreman verify <job>` reruns the gate on the patch.
 
 **Measured** ([evals/implement](../evals/implement/results.md), 9 real fixed issues in Python, TypeScript and C#,
 graded with the maintainers' own tests from each fix, SWE-bench style): every change the gate verified and that
-could be graded was resolved, 5 of 5; the gate verified 6 of 9, each in the first round, at about $0.40–0.80 for the
-implementer and the reviewer. The other 3 stopped honestly in the first round on a PRP that contradicted the code or
-its own tests; the implementer named the line each time. So the weak link is now the spec, not the code. Getting
-there found that environments must test the code as it is when the tests run (see `docs/implement-runs.md`).
+could be graded was resolved at first, 5 of 5, but the gate verified only 6 of 9: the other 3 stopped honestly on a
+PRP that contradicted the code or its own tests. With the spec's lab: 9 of 9 verified, 8 in the first round, 6 of 8
+gradeable resolved, the other 2 narrower than the maintainers' fix by the PRP's choice; about $0.40–0.80 a case for
+the implementer and the reviewer. Getting there also found that environments must test the code as it is when the
+tests run (see `docs/implement-runs.md`).
 UI tasks (later): Playwright checks with screenshots attached to the PR; SWE-Lancer grades freelance work end to end.
 
 ### 7. Select and deliver (later)

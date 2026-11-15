@@ -98,3 +98,30 @@ The same nine issues, everything rerun from the fetch (environments, baselines a
     throws; LinearRouter throws `UnsupportedPathError` for a label with a star.
   The first run's hono PRP was different and implementable; one spec per case is noisy. The next lever is the spec
   (its claims about current behaviour checked by running them, as the implementer did), not the implementer.
+
+## 15 November 2026: the spec gets a lab
+
+All three stops of the previous run were PRPs that made claims nobody had run. The spec writer now has a lab
+(`lab_run`, `lab_run_tests`: a throwaway copy of the set-up repository, network off). For a bug or a feature it must
+sketch the change it specifies, the reproduce test and a rough fix, and run the suite before `submit_spec` accepts
+it; every test the sketch breaks must be covered by `allowed_edits`, and the sketch's new tests must pass. The sketch
+is thrown away. Same nine issues, everything rerun from the fetch: [results](../evals/implement/results.md).
+
+- **Verified by the gate 9/9, 8 in the first round; resolved 6/8 of the gradeable ones; no stops.** Before the lab:
+  6/9 verified, 5/5 resolved, 3 stops.
+- **itsdangerous, stopped twice before, now resolved.** The writer's first sketch broke `test_iter_unsigners`, and the
+  PRP allowed exactly the assertion the maintainers changed, "confirmed by a lab run".
+- **The lab costs little.** Every spec ran the suite on a sketch (1–3 times); planning cost $5.89 across the nine
+  against $5.68 before.
+- **A gate bug the lab exposed:** rich's PRP allowed editing a parametrised test's expected value. pytest names such a
+  case after its values, so the edited case got a new id, and the old id counted as a missing test, a regression.
+  The implementer refused to game it with a `pytest.param` id and stopped. A test that is gone (not failing, not
+  skipped) from a file the PRP allows editing now leaves the gate and is listed for the reviewer instead (unit-tested).
+- **Two verified changes are not resolved, both narrower than the maintainers' fix, both by the PRP's choice:**
+  - rich: the PRP fixed `Text.from_ansi` and listed changing `AnsiDecoder.decode`, a public API, as an
+    anti-pattern; the maintainers changed `decode` to yield the trailing empty line, and their `test_decode` checks it.
+  - hono: the PRP fixed RegExpRouter and kept TrieRouter's different answer out of scope, this time with the lab's
+    evidence of what each router does today; the maintainers fixed TrieRouter as well.
+  Neither is a wrong claim any more; both are scope a client would decide. Clarify could ask it.
+- **gitleaks cost itsdangerous a round:** a new test used `Signer("secret-key")`, which the generic API key rule
+  flags. The implementer renamed it. Secrets on added lines stay blocking; a placeholder in a test is the price.

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Foreman.Recon.Workspaces;
 using Foreman.Core;
 using Foreman.Planning.Spec;
 using Foreman.Recon.CodeMap;
@@ -94,7 +95,7 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
                 else
                 {
                     var run = await ws.RunTestsAsync(Path.Combine(dir, "tests-after"), ct);
-                    tests = run.Delta;
+                    tests = run.Delta.Allowing(id => SpecTools.Accounts(prp.Spec.AllowedEdits, id));
                     if (run.Outcomes.Count == 0) blockers.Add($"the test command produced no report with the change (exit {run.ExitCode}): {Last(run.LogTail)}");
                     else if (tests.Regressions.Count > 0)
                     {

@@ -1,3 +1,4 @@
+using Foreman.Recon.Workspaces;
 using Foreman.Implement;
 using Foreman.Planning.Spec;
 using Foreman.Recon.Baseline;
@@ -153,6 +154,17 @@ public class ImplementTests
         var first = TestDelta.Compare(baseline, [O("a", TestStatus.Failed), O("b", TestStatus.Failed)]);
         var second = TestDelta.Compare(baseline, [O("a", TestStatus.Passed), O("b", TestStatus.Failed)]);
         Assert.Equal(["b"], first.Confirmed(second).Regressions.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void A_test_gone_from_a_file_the_PRP_allows_editing_is_not_a_regression_but_a_failing_one_is()
+    {
+        var delta = TestDelta.Compare(
+            [B("tests.test_ansi::test_issue[old-value]", Verdict.Pass), B("tests.test_ansi::test_decode", Verdict.Pass), B("tests.test_text::test_x", Verdict.Pass)],
+            [O("tests.test_ansi::test_issue[new-value]", TestStatus.Passed), O("tests.test_ansi::test_decode", TestStatus.Failed)])
+            .Allowing(id => SpecTools.Accounts([new AllowedEdit("tests/test_ansi.py", "expected values gain a trailing newline")], id));
+        Assert.Equal(["tests.test_ansi::test_issue[old-value]"], delta.Gone);
+        Assert.Equal(["tests.test_ansi::test_decode", "tests.test_text::test_x"], delta.Regressions.Select(r => r.Id));
     }
 
     [Theory]

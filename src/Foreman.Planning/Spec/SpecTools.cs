@@ -4,6 +4,7 @@ using Foreman.Core;
 using Foreman.Planning.Clarify;
 using Foreman.Planning.Intake;
 using Foreman.Recon.Dossier;
+using Foreman.Recon.Workspaces;
 
 namespace Foreman.Planning.Spec;
 
@@ -27,17 +28,19 @@ public sealed record SpecSubmission(SpecDraft Draft, IReadOnlyList<string> Warni
 /// code checks the done contract: every requirement has a check, most of them executable; every explicit acceptance
 /// criterion of the brief is covered; every answer and assumption from clarify is used; examples point at real
 /// requirements; existing interface symbols and touched files exist where the spec says; a bug starts with a
-/// failing reproduction.
+/// failing reproduction. With a verified test environment the writer also has a lab (<see cref="SpecLab"/>); a bug or
+/// feature PRP must then survive a sketch of its own change against the whole suite (<see cref="CheckLab"/>).
 /// </summary>
 public sealed partial class SpecTools : IToolbox
 {
-    public const int MaxToolCalls = 50;
+    public const int MaxToolCalls = 80;
     public const int MaxSubmissions = 3;
 
     private readonly Job _job;
     private readonly string _dir;
     private readonly SpecContext _context;
     private readonly RepoReader _repo;
+    private readonly SpecLab _lab;
     private bool _started;
     private int _submissions;
 
@@ -47,6 +50,7 @@ public sealed partial class SpecTools : IToolbox
         _dir = job.StageDir("spec");
         _repo = new RepoReader(job);
         _context = SpecStage.Context(job);
+        _lab = new SpecLab(job, _dir);
     }
 
     public int ToolCalls { get; private set; }
@@ -55,7 +59,8 @@ public sealed partial class SpecTools : IToolbox
     public string? Outcome => Finished ? "submitted" : null;
     public static string ResultFile(Job job) => Path.Combine(job.Dir, "spec", "submission.json");
 
-    public IReadOnlyList<ToolDefinition> Definitions => [.. RepoReader.ReadTools, SubmitSpec];
+    public IReadOnlyList<ToolDefinition> Definitions =>
+        _lab.Unavailable is null ? [.. RepoReader.ReadTools, SpecLab.Run, SpecLab.RunTests, SubmitSpec] : [.. RepoReader.ReadTools, SubmitSpec];
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -73,7 +78,20 @@ public sealed partial class SpecTools : IToolbox
         else
         {
             if (!_started) await StartAsync(ct);
-            output = name == "submit_spec" ? Submit(input) : _repo.Call(name, input);
+            try
+            {
+                output = name switch
+                {
+                    "submit_spec" => Submit(input),
+                    "lab_run" => await _lab.RunAsync(ToolInput.String(input, "command") ?? "", SpecLab.Int(input, "timeout_seconds"), ct),
+                    "lab_run_tests" => await _lab.RunTestsAsync(ct),
+                    _ => _repo.Call(name, input),
+                };
+            }
+            catch (InvalidOperationException e)
+            {
+                output = new ToolOutput(e.Message, true);
+            }
         }
         ToolInput.Log(_dir, ToolCalls, name, input, output);
         return output;
@@ -89,6 +107,7 @@ public sealed partial class SpecTools : IToolbox
         draft = Normalize(draft);
 
         var errors = Check(draft, _context, _repo);
+        if (_lab.Unavailable is null) errors.AddRange(CheckLab(draft, _context.TaskType, _lab.LastRun, _lab.LastSketchFiles));
         if (errors.Count > 0 && _submissions < MaxSubmissions) return Rejected(errors);
         Result = new SpecSubmission(draft, errors, _submissions, ToolCalls);
         _job.WriteJson("spec", "submission.json", Result);
@@ -221,7 +240,63 @@ public sealed partial class SpecTools : IToolbox
         return defs is { Count: > 0 } ? $"; it defines {string.Join(", ", defs.Select(d => d.Name).Distinct().Take(20))}" : "";
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    /// <summary>
+    /// What the lab showed, for a bug or a feature: the PRP was sketched and run against the whole suite, every test the
+    /// sketch breaks is one the PRP allows editing (so it doesn't forbid an edit the change must make), and the sketch's
+    /// new tests pass (so its expected values can hold). Empty when the task changes no behaviour.
+    /// </summary>
+    internal static List<string> CheckLab(SpecDraft d, string taskType, TestRun? run, IReadOnlyList<string> sketchFiles)
+    {
+        if (taskType is not ("bug" or "feature")) return [];
+        if (run is null || sketchFiles.Count == 0)
+            return ["the lab has no sketch: before submitting a bug or feature PRP, sketch the change it specifies in your lab with lab_run " +
+                    "(the reproduce test from the first task and a rough version of the fix) and run lab_run_tests, so the PRP's claims about " +
+                    "the code and the existing tests are checked by running them"];
+        if (run.Outcomes.Count == 0)
+            return ["the last lab_run_tests produced no test report: the sketch doesn't compile or collect; fix it and run lab_run_tests again"];
+        var errors = new List<string>();
+        var broken = run.Delta.Regressions.Where(r => !Accounts(d.AllowedEdits, r.Id)).ToList();
+        if (broken.Count > 0)
+            errors.Add($"your sketch breaks {broken.Count} test(s) that passed before: {string.Join(", ", broken.Take(10).Select(r => r.Id))}{(broken.Count > 10 ? $" and {broken.Count - 10} more" : "")}. " +
+                       "Each one either pins behaviour this PRP changes (put its test file in allowed_edits, with the assertion that changes and why, " +
+                       "and don't also require it to keep passing unchanged), or shows that the sketch or the design is wrong (fix it and run lab_run_tests again)");
+        if (run.Delta.NewFailing.Count > 0)
+            errors.Add($"new tests fail with your sketch: {string.Join(", ", run.Delta.NewFailing.Take(10))}. If the sketch does what the PRP says, " +
+                       "a requirement or example they check can't hold as written: fix the PRP, or finish the sketch and run lab_run_tests again");
+        if (run.Delta.NewPassing.Count + run.Delta.NewFailing.Count == 0)
+            errors.Add("the sketch adds no test: write the test the PRP's first task asks for in the lab, see it fail without the fix and pass with it, and run lab_run_tests again");
+        return errors;
+    }
+
+    /// <summary>
+    /// True if an allowed edit covers a test: the test's id names the file (a path, a dotted module or a class named
+    /// after the file), or the edit's reason names the test.
+    /// </summary>
+    internal static bool Accounts(IReadOnlyList<AllowedEdit> edits, string testId)
+    {
+        var leaf = Leaf(testId);
+        foreach (var e in edits)
+        {
+            var path = RepoReader.Clean(e.Path ?? "").Trim('/');
+            if (path.Length == 0) continue;
+            var noExt = Path.ChangeExtension(path, null) ?? path;
+            if (testId.Contains(path, StringComparison.Ordinal) || testId.Contains(noExt.Replace('/', '.'), StringComparison.Ordinal)) return true;
+            var stem = Path.GetFileName(noExt);
+            if (stem.Length >= 4 && testId.Split('.', ':', '/', ' ').Contains(stem, StringComparer.Ordinal)) return true;
+            if (leaf.Length >= 4 && (e.Reason ?? "").Contains(leaf, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The test's own name: the last part of its id, without parameters.</summary>
+    internal static string Leaf(string testId)
+    {
+        var s = testId.Split('(')[0].Split('[')[0];
+        var cut = new[] { s.LastIndexOf("::", StringComparison.Ordinal) + 2, s.LastIndexOf(" > ", StringComparison.Ordinal) + 3, s.LastIndexOf('.') + 1 }.Max();
+        return s[Math.Max(0, cut)..].Trim();
+    }
+
+    public ValueTask DisposeAsync() => _lab.DisposeAsync();
 
     [GeneratedRegex(@"^R\d{1,2}$")]
     private static partial Regex RequirementId();

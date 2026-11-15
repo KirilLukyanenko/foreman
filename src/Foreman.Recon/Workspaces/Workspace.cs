@@ -5,7 +5,7 @@ using Foreman.Recon.Environment;
 using Foreman.Recon.Reports;
 using Foreman.Sandbox;
 
-namespace Foreman.Implement;
+namespace Foreman.Recon.Workspaces;
 
 /// <summary>
 /// What recon proved about running this repository's tests: the environment image the baseline saved, the test script,

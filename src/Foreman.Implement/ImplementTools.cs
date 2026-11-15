@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Foreman.Recon.Workspaces;
 using Foreman.Core;
 using Foreman.Planning.Spec;
 using Foreman.Recon.CodeMap;
@@ -121,9 +122,12 @@ public sealed class ImplementTools : IToolbox
 
     private async Task<ToolOutput> RunTestsAsync(CancellationToken ct)
     {
-        var run = await Ws.RunTestsAsync(Path.Combine(_dir, $"tests-{++_testRuns}"), ct);
+        var run = Allowing(await Ws.RunTestsAsync(Path.Combine(_dir, $"tests-{++_testRuns}"), ct));
         return new ToolOutput(Describe(run), false);
     }
+
+    /// <summary>The run with tests gone from files the PRP allows editing taken out of the gate (<see cref="TestDelta.Allowing"/>).</summary>
+    private TestRun Allowing(TestRun run) => run with { Delta = run.Delta.Allowing(id => SpecTools.Accounts(_prp.Spec.AllowedEdits, id)) };
 
     private static string Describe(TestRun run)
     {
@@ -301,7 +305,7 @@ public sealed class ImplementTools : IToolbox
         TestRun? run = null;
         if (changes.Count > 0)
         {
-            run = await Ws.RunTestsAsync(Path.Combine(_dir, $"submit-{_submissions}-tests"), ct);
+            run = Allowing(await Ws.RunTestsAsync(Path.Combine(_dir, $"submit-{_submissions}-tests"), ct));
             _testRuns++;
             errors.AddRange(CheckTests(run));
         }

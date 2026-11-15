@@ -1,7 +1,7 @@
 using Foreman.Recon.Baseline;
 using Foreman.Recon.Reports;
 
-namespace Foreman.Implement;
+namespace Foreman.Recon.Workspaces;
 
 /// <summary>A test whose result changed against the baseline, and what it is now.</summary>
 public sealed record TestChange(string Id, string Now);
@@ -21,7 +21,8 @@ public sealed record TestDelta(
     IReadOnlyList<string> NewFailing,
     IReadOnlyList<string> NewSkipped,
     IReadOnlyList<string> FixedKnownRed,
-    int KnownRedStillFailing)
+    int KnownRedStillFailing,
+    IReadOnlyList<string>? Gone = null)
 {
     public static TestDelta Compare(IReadOnlyList<TestBaseline> baseline, IReadOnlyList<TestOutcome> now)
     {
@@ -55,6 +56,17 @@ public sealed record TestDelta(
         return this with { Regressions = Regressions.Where(r => second.Contains(r.Id)).ToList() };
     }
 
+    /// <summary>
+    /// Takes out of the gate the tests that are gone (not failing, not skipped) from files the PRP allows editing: a
+    /// rewritten expectation can rename a test, since pytest and others name a parametrised case after its values. They
+    /// are listed in <see cref="Gone"/> for the reviewer. A covered test that fails or is skipped still counts.
+    /// </summary>
+    public TestDelta Allowing(Func<string, bool> allowedEdit)
+    {
+        var gone = Regressions.Where(r => r.Now == "missing" && allowedEdit(r.Id)).ToList();
+        return gone.Count == 0 ? this : this with { Regressions = Regressions.Except(gone).ToList(), Gone = [.. Gone ?? [], .. gone.Select(g => g.Id)] };
+    }
+
     /// <summary>A few lines for an agent or a report.</summary>
     public string Summary(int max = 15)
     {
@@ -66,6 +78,7 @@ public sealed record TestDelta(
         };
         lines.AddRange(Regressions.Take(max).Select(r => $"  - {r.Id} ({r.Now})"));
         if (Regressions.Count > max) lines.Add($"  ... and {Regressions.Count - max} more");
+        if (Gone is { Count: > 0 }) lines.Add($"Gone from files the PRP allows editing (renamed or rewritten, not counted): {string.Join(", ", Gone.Take(max))}");
         if (NewPassing.Count + NewFailing.Count + NewSkipped.Count > 0)
         {
             lines.Add($"New tests (not in the baseline): {NewPassing.Count} pass, {NewFailing.Count} fail, {NewSkipped.Count} skipped.");

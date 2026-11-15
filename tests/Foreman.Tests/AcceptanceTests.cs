@@ -127,3 +127,32 @@ public class AcceptanceTests
     public void Hidden_test_files_are_test_files_named_acceptance(string path, bool hidden) =>
         Assert.Equal(hidden, AcceptanceTools.IsHiddenTestFile(path));
 }
+
+public class CandidateTests
+{
+    private static CandidateSummary C(int k, string status, int? hidden = null, string? review = "approve", int rounds = 1, int lines = 10, decimal cost = 1m) =>
+        new(k, status, null, Enumerable.Range(1, rounds).Select(r => new RoundSummary(r, "submitted", true, 0, 0, 0, null)).ToList(), $"implement/candidate-{k}/round-{rounds}/patch.diff", null, review, hidden, lines, cost, 0);
+
+    [Fact]
+    public void The_kept_candidate_is_verified_then_passes_most_hidden_tests_then_approved_then_first_time_then_smallest()
+    {
+        Assert.Null(ImplementStage.Select([C(1, "not_verified"), C(2, "gave_up")]));
+        Assert.Equal(2, ImplementStage.Select([C(1, "not_verified", hidden: 9), C(2, "verified", hidden: 3)]));
+        Assert.Equal(1, ImplementStage.Select([C(1, "verified", hidden: 5), C(2, "verified", hidden: 4, lines: 2)]));
+        Assert.Equal(2, ImplementStage.Select([C(1, "verified", review: "changes_requested"), C(2, "verified")]));
+        Assert.Equal(2, ImplementStage.Select([C(1, "verified", rounds: 2, lines: 2), C(2, "verified", lines: 40)]));
+        Assert.Equal(3, ImplementStage.Select([C(1, "verified", lines: 30), C(2, "verified", lines: 30, cost: 0.5m), C(3, "verified", lines: 12)]));
+    }
+
+    [Fact]
+    public void An_attempt_of_the_only_candidate_keeps_the_old_layout()
+    {
+        Attempt only = 2;
+        Assert.Equal("round-2", only.Dir);
+        Assert.Equal(["--round", "2"], only.Args);
+        var third = new Attempt(1, 3);
+        Assert.Equal("candidate-3/round-1", third.Dir);
+        Assert.Equal("c3-1", third.Slug);
+        Assert.Equal(["--round", "1", "--candidate", "3"], third.Args);
+    }
+}

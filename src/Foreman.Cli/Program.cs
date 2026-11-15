@@ -54,16 +54,18 @@ switch (args.FirstOrDefault())
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
                             [--intake-model id] [--clarify-model id] [--spec-model id] [--go]
-                            [--acceptance-model id] [--no-acceptance] [--implement-model id] [--review-model id] [--rounds 3] [--no-review]
+                            [--acceptance-model id] [--no-acceptance] [--implement-model id] [--review-model id] [--rounds 3] [--candidates 1] [--no-review]
               foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec,accept,implement]
               foreman answer <job id> [--set Q1="..."]... [--defaults]
               foreman ready <job id>                      mark the PRP (spec/prp.md) as reviewed and approved
-              foreman verify <job id> [--round n] [--no-review]   verify implement/patch.diff again
+              foreman verify <job id> [--round n] [--candidate k] [--no-review]   verify implement/patch.diff again
               foreman show <job id>
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
-              foreman eval implement [--only id,id] [--keep-spec] [--no-acceptance] [--implement-model id] [--review-model id] [--rounds 3]
+              foreman eval implement [--only id,id] [--runs 1] [--label name] [--reuse-planning] [--keep-spec] [--no-acceptance] [--no-review]
+                                     [--candidates 1] [--implement-model id] [--review-model id] [--rounds 3]
+              foreman eval compare <results-a.json> <results-b.json> [--out file.md]
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -131,6 +133,7 @@ async Task<int> Eval()
     if (args.ElementAtOrDefault(1) == "clarify") return await EvalClarify();
     if (args.ElementAtOrDefault(1) == "spec") return await EvalSpec();
     if (args.ElementAtOrDefault(1) == "implement") return await EvalImplement();
+    if (args.ElementAtOrDefault(1) == "compare") return EvalCompare();
     if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake', 'clarify', 'spec' or 'implement'"); return 2; }
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
     var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
@@ -187,12 +190,24 @@ async Task<int> EvalImplement()
     var cases = ImplementEval.ReadCases(casesFile);
     if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
     var driver = Driver() ?? throw new InvalidOperationException("eval implement needs a model");
-    var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec"), args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs()).RunAsync(cases, casesFile, cts.Token);
-    var name = Arg("--only") is null ? "results" : "results-partial";
+    var runs = int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 1;
+    var label = Arg("--label");
+    var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec"),
+        args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs(), runs, args.Contains("--reuse-planning"), label).RunAsync(cases, casesFile, cts.Token);
+    var name = (label is null ? "results" : $"results-{label}") + (Arg("--only") is null ? "" : "-partial");
     File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
     var md = ImplementEval.Markdown(report);
     File.WriteAllText(Path.Combine(outDir, name + ".md"), md);
     Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
+int EvalCompare()
+{
+    if (args.ElementAtOrDefault(2) is not { } a || args.ElementAtOrDefault(3) is not { } b) { Console.Error.WriteLine("eval compare: two results files"); return 2; }
+    var md = ImplementEval.Compare(Json.Read<ImplementEvalReport>(File.ReadAllText(a))!, Json.Read<ImplementEvalReport>(File.ReadAllText(b))!);
+    if (Arg("--out") is { } outFile) File.WriteAllText(outFile, md);
     Console.WriteLine(md);
     return 0;
 }
@@ -224,8 +239,8 @@ IToolbox Toolbox(string? kind)
         "intake" => new IntakeTools(job),
         "spec" => new SpecTools(job),
         "accept" => new AcceptanceTools(job),
-        "implement" => new ImplementTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
-        "review" => new ReviewTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
+        "implement" => new ImplementTools(job, AttemptFromArgs()),
+        "review" => new ReviewTools(job, AttemptFromArgs()),
         "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),
         _ => throw new ArgumentException($"unknown toolbox '{kind}'"),
     };
@@ -246,13 +261,18 @@ IAgentDriver? Driver()
     };
 }
 
+Attempt AttemptFromArgs() => new(int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture),
+    int.TryParse(Arg("--candidate"), out var c) && c > 0 ? c : 0);
+
 AcceptanceOptions AcceptanceOptionsFromArgs() => new(Arg("--acceptance-model") ?? AcceptanceOptions.DefaultModel);
 
 ImplementOptions ImplementOptionsFromArgs() => new(
     Model: Arg("--implement-model") ?? ImplementOptions.DefaultModel,
     MaxRounds: int.TryParse(Arg("--rounds"), out var rounds) && rounds > 0 ? rounds : 3,
     Review: new ReviewOptions(Arg("--review-model") ?? ReviewOptions.DefaultModel),
-    SkipReview: args.Contains("--no-review"));
+    SkipReview: args.Contains("--no-review"),
+    Candidates: int.TryParse(Arg("--candidates"), out var n) && n > 0 ? n : 1,
+    SkipAcceptance: args.Contains("--no-acceptance"));
 
 async Task<int> Verify(string? id)
 {
@@ -261,7 +281,7 @@ async Task<int> Verify(string? id)
     var patchFile = Path.Combine(job.Dir, "implement", "patch.diff");
     if (!File.Exists(patchFile)) { Console.Error.WriteLine("verify: no implement/patch.diff; run the implement stage first"); return 1; }
     var options = ImplementOptionsFromArgs();
-    var round = int.TryParse(Arg("--round"), out var r) && r > 0 ? r : 1;
+    var round = new Attempt(int.TryParse(Arg("--round"), out var r) && r > 0 ? r : 1, int.TryParse(Arg("--candidate"), out var c) && c > 0 ? c : 0);
     var resultFile = ImplementTools.ResultFile(job, round);
     var submission = File.Exists(resultFile) ? Json.Read<ImplementResult>(File.ReadAllText(resultFile))?.Submission : null;
     var verifier = new Verifier(options.SkipReview ? null : Driver(), options.Review, null, Console.WriteLine);

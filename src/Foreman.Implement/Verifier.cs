@@ -57,19 +57,20 @@ public sealed record VerifyReport(
 /// tests' fail-to-pass, the repository's CI lint commands before and after (only a command that passed before can
 /// fail the change), gitleaks on the added lines, and, when all of that holds, the reviewer.
 /// </summary>
-public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOptions = null, SandboxLimits? limits = null, Action<string>? log = null)
+public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOptions = null, SandboxLimits? limits = null, Action<string>? log = null, bool hiddenTests = true)
 {
     public const int MaxLintCommands = 4;
     private static readonly TimeSpan LintTimeout = TimeSpan.FromMinutes(5);
     private const int MaxChangedFileBytes = 2_000_000;
 
-    public async Task<VerifyReport> RunAsync(Job job, int round, string patch, ImplementSubmission? submission, CancellationToken ct)
+    public async Task<VerifyReport> RunAsync(Job job, Attempt attempt, string patch, ImplementSubmission? submission, CancellationToken ct)
     {
         var clock = Stopwatch.StartNew();
         if (Ready.Check(job) is { } notReady) throw new InvalidOperationException(notReady);
         var prp = job.ReadJson<Prp>("spec", "prp.json");
         var env = TestEnvironment.Of(job);
-        var dir = job.StageDir(Path.Combine("verify", ImplementTools.RoundDir(round)));
+        var round = attempt.Round;
+        var dir = job.StageDir(Path.Combine("verify", attempt.Dir));
         Dirs.Delete(dir);
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "patch.diff"), patch, new UTF8Encoding(false));
@@ -80,15 +81,15 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
         if (changes.Count == 0) blockers.Add("the patch is empty");
 
         var lintCommands = SpecStage.Validation(job).Where(v => !v.Verified).Take(MaxLintCommands).ToList();
-        var acceptance = AcceptanceStage.Hidden(job);
+        var acceptance = hiddenTests ? AcceptanceStage.Hidden(job) : null;
         HiddenResult? hidden = null;
         TestDelta? tests = null;
         ReproCheck? repro = null;
         var lint = new List<LintResult>();
         var secrets = new List<SecretHit>();
 
-        var after = new DockerSandbox(job.Id, limits, $"verify-{round}");
-        var before = new DockerSandbox(job.Id, limits, $"verify-{round}-base");
+        var after = new DockerSandbox(job.Id, limits, $"verify-{attempt.Slug}");
+        var before = new DockerSandbox(job.Id, limits, $"verify-{attempt.Slug}-base");
         try
         {
             // The change on a fresh copy.
@@ -178,15 +179,15 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
         if (blockers.Count == 0 && reviewer is not null)
         {
             var facts = new VerifyReport(round, true, [], guard, tests, repro, lint, secrets, null, changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), 0, hidden);
-            review = await new Reviewer(reviewer, reviewOptions ?? new ReviewOptions(), log).RunAsync(job, round, patch, facts, submission, ct);
+            review = await new Reviewer(reviewer, reviewOptions ?? new ReviewOptions(), log).RunAsync(job, attempt, patch, facts, submission, ct);
             blockers.AddRange(review.Blocking());
         }
 
         var report = new VerifyReport(round, blockers.Count == 0, blockers, guard, tests, repro, lint, secrets, review,
             changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), Math.Round(clock.Elapsed.TotalSeconds, 1), hidden);
-        job.WriteJson("verify", ImplementTools.RoundDir(round) + "/verify.json", report);
-        job.WriteJson("verify", "verify.json", report);
-        job.Event("verify", "verified", new { round, report.Passed, blockers = blockers.Count, regressions = tests?.Regressions.Count, reproducing = repro?.Reproducing.Count, hiddenFailing = hidden?.Failing.Count, review = review?.Verdict });
+        job.WriteJson("verify", attempt.Dir + "/verify.json", report);
+        if (attempt.Candidate == 0) job.WriteJson("verify", "verify.json", report);
+        job.Event("verify", "verified", new { attempt = attempt.ToString(), report.Passed, blockers = blockers.Count, regressions = tests?.Regressions.Count, reproducing = repro?.Reproducing.Count, hiddenFailing = hidden?.Failing.Count, review = review?.Verdict });
         return report;
     }
 

@@ -19,6 +19,19 @@ public sealed record ImplementSubmission(string Summary, string PrTitle, string 
 /// <param name="GaveUpKind"><c>spec_problem</c>, <c>test_problem</c>, <c>environment</c> or <c>cannot_do</c>.</param>
 public sealed record ImplementResult(string Status, ImplementSubmission? Submission, string? GaveUpKind, string? GaveUpReason, IReadOnlyList<string> Warnings, int Submissions, int ToolCalls, int TestRuns);
 
+/// <summary>
+/// One implementer round of one candidate. Candidate 0 means the only one: its files go straight under
+/// <c>implement/round-N/</c>; parallel candidates are numbered from 1 and each gets <c>candidate-K/</c>.
+/// </summary>
+public readonly record struct Attempt(int Round, int Candidate = 0)
+{
+    public string Dir => Candidate == 0 ? $"round-{Round}" : $"candidate-{Candidate}/round-{Round}";
+    public string Slug => Candidate == 0 ? $"{Round}" : $"c{Candidate}-{Round}";
+    public IReadOnlyList<string> Args => Candidate == 0 ? ["--round", $"{Round}"] : ["--round", $"{Round}", "--candidate", $"{Candidate}"];
+    public override string ToString() => Candidate == 0 ? $"round {Round}" : $"candidate {Candidate}, round {Round}";
+    public static implicit operator Attempt(int round) => new(round);
+}
+
 /// <summary>Where a round's implementer works and what it is held to; written by the stage, read by the toolbox.</summary>
 public sealed record ImplementContext(int Round, string Volume, string StartCommit);
 
@@ -42,6 +55,7 @@ public sealed class ImplementTools : IToolbox
 
     private readonly Job _job;
     private readonly ImplementContext _context;
+    private readonly Attempt _attempt;
     private readonly TestEnvironment _env;
     private readonly Prp _prp;
     private readonly string _dir;
@@ -50,18 +64,18 @@ public sealed class ImplementTools : IToolbox
     private int _submissions;
     private int _testRuns;
 
-    public ImplementTools(Job job, int round, SandboxLimits? limits = null)
+    public ImplementTools(Job job, Attempt attempt, SandboxLimits? limits = null)
     {
         _job = job;
         _limits = limits;
-        _context = job.ReadJson<ImplementContext>("implement", RoundDir(round) + "/context.json");
+        _attempt = attempt;
+        _context = job.ReadJson<ImplementContext>("implement", attempt.Dir + "/context.json");
         _env = TestEnvironment.Of(job);
         _prp = job.ReadJson<Prp>("spec", "prp.json");
-        _dir = job.StageDir(Path.Combine("implement", RoundDir(round)));
+        _dir = job.StageDir(Path.Combine("implement", attempt.Dir));
     }
 
-    public static string RoundDir(int round) => $"round-{round}";
-    public static string ResultFile(Job job, int round) => Path.Combine(job.Dir, "implement", RoundDir(round), "result.json");
+    public static string ResultFile(Job job, Attempt attempt) => Path.Combine(job.Dir, "implement", attempt.Dir, "result.json");
 
     public int ToolCalls { get; private set; }
     public ImplementResult? Result { get; private set; }
@@ -73,7 +87,7 @@ public sealed class ImplementTools : IToolbox
     public async Task StartAsync(CancellationToken ct)
     {
         if (_workspace is not null) return;
-        if (File.Exists(ResultFile(_job, _context.Round))) File.Delete(ResultFile(_job, _context.Round));
+        if (File.Exists(ResultFile(_job, _attempt))) File.Delete(ResultFile(_job, _attempt));
         _workspace = await Workspace.OpenAsync(_context.Volume, _env, _limits);
     }
 
@@ -377,7 +391,7 @@ public sealed class ImplementTools : IToolbox
     private void Finish(ImplementResult result)
     {
         Result = result;
-        _job.WriteJson("implement", RoundDir(_context.Round) + "/result.json", result);
+        _job.WriteJson("implement", _attempt.Dir + "/result.json", result);
     }
 
     private ToolOutput Rejected(IReadOnlyList<string> errors, TestRun? run = null) =>

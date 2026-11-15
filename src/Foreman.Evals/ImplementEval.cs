@@ -38,9 +38,11 @@ public sealed record AcceptanceGrade(string Status, int Tests, int FailOnBase, d
 public sealed record ImplementRun(
     string Id, string Language, string? Stage, string Status, string? Reason, int Rounds, bool Verified, string? ReviewVerdict,
     HiddenGrade? Hidden, int FilesChanged, int LinesAdded, int LinesRemoved, decimal ImplementCostUsd, decimal PlanningCostUsd, double Seconds,
-    AcceptanceGrade? Acceptance = null);
+    AcceptanceGrade? Acceptance = null, int Run = 1, int Candidates = 1);
 
-public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, IReadOnlyList<ImplementRun> Results);
+/// <param name="Runs">Implement runs per case on the same PRP; with more than one the page reports pass@k and pass^k.</param>
+/// <param name="Label">What this run is (baseline, no-review, candidates-3...), for comparing versions.</param>
+public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, IReadOnlyList<ImplementRun> Results, int Runs = 1, string? Label = null);
 
 /// <summary>
 /// The whole pipeline on real fixed issues, graded by the fix's own tests. Each case's job comes from the
@@ -49,7 +51,8 @@ public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, I
 /// harness stands in for the human), and implemented and verified with the fix loop. Then the maintainers' tests are
 /// applied over the result and run: Foreman's own gate saying "verified" is a claim, the hidden tests are the check.
 /// </summary>
-public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOptions options, Action<string>? log = null, bool keepSpec = false, AcceptanceOptions? acceptance = null)
+public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOptions options, Action<string>? log = null, bool keepSpec = false, AcceptanceOptions? acceptance = null,
+    int runs = 1, bool reusePlanning = false, string? label = null)
 {
     public static IReadOnlyList<ImplementCase> ReadCases(string path) =>
         JsonSerializer.Deserialize<List<ImplementCase>>(File.ReadAllText(path), LocalizationEval.CaseJson) ?? [];
@@ -63,14 +66,16 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
         {
             var c = localization[k.Id];
             log?.Invoke($"{c.Id} ({c.Language})");
-            results.Add(await RunCaseAsync(c, ct));
-            var r = results[^1];
-            log?.Invoke($"{c.Id}: {r.Status}{(r.Reason is null ? "" : $" ({Short(r.Reason)})")}; {r.Rounds} round(s); hidden tests: {(r.Hidden is { } h ? h.Error ?? (h.Resolved ? "RESOLVED" : $"not resolved, {h.FailToPassFailing.Count}/{h.FailToPass} fail-to-pass failing, {h.PassToPassBroken.Count} pass-to-pass broken") : "not run")}; ${r.ImplementCostUsd:0.00} + ${r.PlanningCostUsd:0.00} planning, {r.Seconds:0} s");
+            await foreach (var r in RunCaseAsync(c, ct))
+            {
+                results.Add(r);
+                log?.Invoke($"{c.Id}{(runs > 1 ? $" run {r.Run}" : "")}: {r.Status}{(r.Reason is null ? "" : $" ({Short(r.Reason)})")}; {r.Rounds} round(s); hidden tests: {(r.Hidden is { } h ? h.Error ?? (h.Resolved ? "RESOLVED" : $"not resolved, {h.FailToPassFailing.Count}/{h.FailToPass} fail-to-pass failing, {h.PassToPassBroken.Count} pass-to-pass broken") : "not run")}; ${r.ImplementCostUsd:0.00} + ${r.PlanningCostUsd:0.00} planning, {r.Seconds:0} s");
+            }
         }
-        return new ImplementEvalReport(DateTime.UtcNow, options.Model, cases.Count, results);
+        return new ImplementEvalReport(DateTime.UtcNow, options.Model, cases.Count, results, runs, label);
     }
 
-    private async Task<ImplementRun> RunCaseAsync(LocalizationCase c, CancellationToken ct)
+    private async IAsyncEnumerable<ImplementRun> RunCaseAsync(LocalizationCase c, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var id = LocalizationEval.JobId(c);
@@ -83,47 +88,103 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
             if (s.Contains("FAILED", StringComparison.Ordinal) && failedStage is null) { failedStage = s.Split(':')[0].Trim(); error = s; }
         }
 
-        // Recon again (the earlier clone predates the line-ending fix), the rules file with the baseline, the PRP.
-        var recon = new ReconOptions(Commit: c.BaseCommit);
-        IStage[] planning =
-        [
-            new FetchStage(recon), new TriageStage(), new SecurityStage(null, Log), new CodeMapStage(null),
-            new EnvironmentStage(recon, driver, Log), new BaselineStage(recon, Log),
-            new DossierStage(driver, new DossierOptions(Sections: []), Log),
-            .. keepSpec ? Array.Empty<IStage>() : [new SpecStage(driver, new SpecOptions(), Log)],
-        ];
-        var ok = await new Pipeline(planning).RunAsync(job, planning.Select(s => s.Name).ToHashSet(), Log, ct);
-        var planningCost = PlanningCost(job);
-        if (!ok) return new ImplementRun(c.Id, c.Language, failedStage, "recon_failed", error, 0, false, null, null, 0, 0, 0, 0, planningCost, Math.Round(clock.Elapsed.TotalSeconds, 1));
+        // Planning once per case: recon again (the earlier clone predates the line-ending fix), the rules file with the
+        // baseline, the PRP, the hidden acceptance tests. With reusePlanning a case that has them all keeps them, so an
+        // ablation changes only what it is about.
+        var reuse = reusePlanning && Reusable(job, acceptance is not null);
+        if (reuse) log?.Invoke("  planning: reused (environment, baseline, PRP and acceptance tests from the last run)");
+        else
+        {
+            var recon = new ReconOptions(Commit: c.BaseCommit);
+            IStage[] planning =
+            [
+                new FetchStage(recon), new TriageStage(), new SecurityStage(null, Log), new CodeMapStage(null),
+                new EnvironmentStage(recon, driver, Log), new BaselineStage(recon, Log),
+                new DossierStage(driver, new DossierOptions(Sections: []), Log),
+                .. keepSpec ? Array.Empty<IStage>() : [new SpecStage(driver, new SpecOptions(), Log)],
+            ];
+            var ok = await new Pipeline(planning).RunAsync(job, planning.Select(s => s.Name).ToHashSet(), Log, ct);
+            if (!ok)
+            {
+                yield return new ImplementRun(c.Id, c.Language, failedStage, "recon_failed", error, 0, false, null, null, 0, 0, 0, 0, PlanningCost(job), Math.Round(clock.Elapsed.TotalSeconds, 1));
+                yield break;
+            }
+            Ready.Mark(job);
+            job.Event("eval", "ready-by-harness", new { reason = "the implement eval stands in for the human" });
+            if (acceptance is not null)
+                await new Pipeline([new AcceptanceStage(driver, acceptance, Log)]).RunAsync(job, new HashSet<string> { "accept" }, Log, ct);
+            else Dirs.Delete(Path.Combine(job.Dir, "acceptance"));
+        }
+        var planningCost = reuse ? 0 : PlanningCost(job);
 
-        Ready.Mark(job);
-        job.Event("eval", "ready-by-harness", new { reason = "the implement eval stands in for the human" });
-        if (acceptance is not null)
-            await new Pipeline([new AcceptanceStage(driver, acceptance, Log)]).RunAsync(job, new HashSet<string> { "accept" }, Log, ct);
-        else Dirs.Delete(Path.Combine(job.Dir, "acceptance"));
-        await new Pipeline([new ImplementStage(driver, options, Log)]).RunAsync(job, new HashSet<string> { "implement" }, Log, ct);
-
-        var report = File.Exists(Path.Combine(job.Dir, "implement", "implement.json")) ? job.ReadJson<ImplementReport>("implement", "implement.json") : null;
-        var verify = File.Exists(Path.Combine(job.Dir, "verify", "verify.json")) ? job.ReadJson<VerifyReport>("verify", "verify.json") : null;
-        var patchFile = Path.Combine(job.Dir, "implement", "patch.diff");
-        HiddenGrade? hidden = null;
+        HiddenTests? tests = null;
         AcceptanceGrade? accepted = null;
+        string? gradeError = null;
         try
         {
-            var tests = await FetchHiddenAsync(c, ct);
-            hidden = await GradeAsync(job, tests, File.Exists(patchFile) ? File.ReadAllText(patchFile) : null, ct);
+            tests = await FetchHiddenAsync(c, ct);
             if (acceptance is not null) accepted = await GradeAcceptanceAsync(job, tests, ct);
         }
         catch (InvalidOperationException e)
         {
-            hidden ??= new HiddenGrade(false, 0, [], 0, [], e.Message);
-            if (acceptance is not null) accepted ??= new AcceptanceGrade("error", 0, 0, null, null, [], 0, e.Message);
+            gradeError = e.Message;
         }
-        job.WriteJson("eval", "hidden.json", hidden);
         if (accepted is not null) job.WriteJson("eval", "acceptance.json", accepted);
-        return new ImplementRun(c.Id, c.Language, report?.Status == "verified" ? null : "implement", report?.Status ?? "no_report", report?.Reason, report?.Rounds.Count ?? 0,
-            report?.Status == "verified", verify?.Review?.Verdict, hidden, verify?.FilesChanged ?? 0, verify?.LinesAdded ?? 0, verify?.LinesRemoved ?? 0,
-            report?.CostUsd ?? 0, planningCost, Math.Round(clock.Elapsed.TotalSeconds, 1), accepted);
+
+        for (var run = 1; run <= runs; run++)
+        {
+            var runClock = System.Diagnostics.Stopwatch.StartNew();
+            await new Pipeline([new ImplementStage(driver, options, Log)]).RunAsync(job, new HashSet<string> { "implement" }, Log, ct);
+            var report = File.Exists(Path.Combine(job.Dir, "implement", "implement.json")) ? job.ReadJson<ImplementReport>("implement", "implement.json") : null;
+            var verify = File.Exists(Path.Combine(job.Dir, "verify", "verify.json")) ? job.ReadJson<VerifyReport>("verify", "verify.json") : null;
+            var patchFile = Path.Combine(job.Dir, "implement", "patch.diff");
+            HiddenGrade hidden;
+            try
+            {
+                hidden = tests is null ? new HiddenGrade(false, 0, [], 0, [], gradeError ?? "no hidden tests") : await GradeAsync(job, tests, File.Exists(patchFile) ? File.ReadAllText(patchFile) : null, ct);
+            }
+            catch (InvalidOperationException e)
+            {
+                hidden = new HiddenGrade(false, 0, [], 0, [], e.Message);
+            }
+            job.WriteJson("eval", runs == 1 ? "hidden.json" : $"hidden-run-{run}.json", hidden);
+            if (runs > 1) KeepRun(job, run);
+            yield return new ImplementRun(c.Id, c.Language, report?.Status == "verified" ? null : "implement", report?.Status ?? "no_report", report?.Reason, report?.Rounds.Count ?? 0,
+                report?.Status == "verified", verify?.Review?.Verdict, hidden, verify?.FilesChanged ?? 0, verify?.LinesAdded ?? 0, verify?.LinesRemoved ?? 0,
+                report?.CostUsd ?? 0, run == 1 ? planningCost : 0, Math.Round((run == 1 ? clock : runClock).Elapsed.TotalSeconds, 1), accepted, run, report?.Candidates?.Count ?? 1);
+        }
+    }
+
+    /// <summary>A job whose planning a rerun can keep: a Ready PRP, a baseline volume, and acceptance tests if they are wanted.</summary>
+    private static bool Reusable(Job job, bool needAcceptance)
+    {
+        if (Ready.Check(job) is not null) return false;
+        try { TestEnvironment.Of(job); }
+        catch (InvalidOperationException) { return false; }
+        catch (IOException) { return false; }
+        if (!DockerSandbox.VolumeExistsAsync(new DockerSandbox(job.Id).Volume).GetAwaiter().GetResult()) return false;
+        return !needAcceptance || File.Exists(AcceptanceTools.ResultFile(job));
+    }
+
+    /// <summary>With several runs, each run's implement and verify folders are kept under eval/run-N before the next one clears them.</summary>
+    private static void KeepRun(Job job, int run)
+    {
+        foreach (var stage in new[] { "implement", "verify" })
+        {
+            var from = Path.Combine(job.Dir, stage);
+            var to = Path.Combine(job.Dir, "eval", $"run-{run}", stage);
+            if (!Directory.Exists(from)) continue;
+            Dirs.Delete(to);
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            CopyDirectory(from, to);
+        }
+    }
+
+    private static void CopyDirectory(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var f in Directory.GetFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)), overwrite: true);
+        foreach (var d in Directory.GetDirectories(from)) CopyDirectory(d, Path.Combine(to, Path.GetFileName(d)));
     }
 
     /// <summary>Foreman's hidden tests on the maintainers' fix: the base commit, their code change, our acceptance tests.</summary>
@@ -259,17 +320,65 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
 
     // ------------------------------------------------------------------ report
 
+    /// <summary>
+    /// Two runs of the eval on the same cases, compared pair by pair (the same case and run number in both): how many
+    /// each resolved and verified, the discordant pairs, McNemar's exact p-value, and the cost. With nine cases a
+    /// difference of a case or two is noise; the p-value says so.
+    /// </summary>
+    public static string Compare(ImplementEvalReport a, ImplementEvalReport b)
+    {
+        string Name(ImplementEvalReport r, string fallback) => r.Label ?? fallback;
+        var (na, nb) = (Name(a, "A"), Name(b, "B"));
+        var pairs = a.Results.Join(b.Results, x => (x.Id, x.Run), y => (y.Id, y.Run), (x, y) => (A: x, B: y))
+            .Where(p => p.A.Hidden is { Error: null } && p.B.Hidden is { Error: null }).ToList();
+        var onlyA = pairs.Count(p => p.A.Hidden!.Resolved && !p.B.Hidden!.Resolved);
+        var onlyB = pairs.Count(p => !p.A.Hidden!.Resolved && p.B.Hidden!.Resolved);
+        var sb = new StringBuilder($"# Implement eval: {na} vs {nb}\n\n");
+        sb.Append($"{pairs.Count} paired runs (the same case and run number, graded in both).\n\n");
+        sb.Append($"| | {na} | {nb} |\n|---|---|---|\n");
+        sb.Append($"| Resolved | {pairs.Count(p => p.A.Hidden!.Resolved)}/{pairs.Count} | {pairs.Count(p => p.B.Hidden!.Resolved)}/{pairs.Count} |\n");
+        sb.Append($"| Verified by the gate | {pairs.Count(p => p.A.Verified)}/{pairs.Count} | {pairs.Count(p => p.B.Verified)}/{pairs.Count} |\n");
+        sb.Append($"| Verified but not resolved | {pairs.Count(p => p.A.Verified && !p.A.Hidden!.Resolved)} | {pairs.Count(p => p.B.Verified && !p.B.Hidden!.Resolved)} |\n");
+        sb.Append($"| Rounds | {pairs.Sum(p => p.A.Rounds)} | {pairs.Sum(p => p.B.Rounds)} |\n");
+        sb.Append($"| Implement and review cost | ${pairs.Sum(p => p.A.ImplementCostUsd):0.00} | ${pairs.Sum(p => p.B.ImplementCostUsd):0.00} |\n");
+        sb.Append($"| Time | {pairs.Sum(p => p.A.Seconds) / 60:0} min | {pairs.Sum(p => p.B.Seconds) / 60:0} min |\n\n");
+        sb.Append($"Resolved by only {na}: {onlyA}; only {nb}: {onlyB}. McNemar's exact test: p = {Stats.McNemar(onlyA, onlyB):0.###}");
+        sb.Append(Stats.McNemar(onlyA, onlyB) < 0.05 ? " (a real difference at the 5% level).\n\n" : " (not distinguishable from chance on this many cases).\n\n");
+        sb.Append($"| Case | Run | {na} | {nb} |\n|---|---|---|---|\n");
+        foreach (var p in pairs)
+            sb.Append($"| {p.A.Id} | {p.A.Run} | {Cell(p.A)} | {Cell(p.B)} |\n");
+        return sb.ToString();
+
+        static string Cell(ImplementRun r) => $"{(r.Hidden!.Resolved ? "resolved" : "not resolved")}, {(r.Verified ? "verified" : r.Status.Replace('_', ' '))}, {r.Rounds} round(s)";
+    }
+
     public static string Markdown(ImplementEvalReport r)
     {
         var graded = r.Results.Where(x => x.Hidden is { Error: null }).ToList();
         var sb = new StringBuilder("# Implement eval\n\n");
-        sb.Append($"{r.At:yyyy-MM-dd}, implementer `{r.Model}`, {r.Cases} real fixed issues, one run each. Every case went through the whole pipeline at the commit before its fix; ");
+        if (r.Label is not null) sb.Append($"Run: **{r.Label}**.\n\n");
+        sb.Append($"{r.At:yyyy-MM-dd}, implementer `{r.Model}`, {r.Cases} real fixed issues, {(r.Runs == 1 ? "one run each" : $"{r.Runs} implement runs each on the same PRP")}. Every case went through the whole pipeline at the commit before its fix; ");
         sb.Append("the PRP was marked Ready by the harness instead of a human. **Verified** is Foreman's own gate (tests against the baseline, the new tests' fail-to-pass, the diff guard, lint, secrets, the reviewer). ");
         sb.Append("**Resolved** is the maintainers' own tests from the fix, applied over Foreman's change (SWE-bench style: every FAIL_TO_PASS and PASS_TO_PASS test passes); no agent ever saw them.\n\n");
         sb.Append($"Resolved {graded.Count(x => x.Hidden!.Resolved)}/{graded.Count} graded; verified by the gate {r.Results.Count(x => x.Verified)}/{r.Results.Count}; ");
         sb.Append($"verified and resolved {graded.Count(x => x.Verified && x.Hidden!.Resolved)}, verified but not resolved {graded.Count(x => x.Verified && !x.Hidden!.Resolved)}, not verified but resolved {graded.Count(x => !x.Verified && x.Hidden!.Resolved)}. ");
         sb.Append($"Implementing and reviewing cost {r.Results.Sum(x => x.ImplementCostUsd):0.00} USD, planning (environment agent, spec) {r.Results.Sum(x => x.PlanningCostUsd):0.00} USD (list-price estimates; the runs were on a subscription).\n\n");
-        var acc = r.Results.Where(x => x.Acceptance is not null).ToList();
+        var resolved = graded.Count(x => x.Hidden!.Resolved);
+        sb.Append($"Resolved rate {Stats.Percent(graded.Count == 0 ? 0 : (double)resolved / graded.Count)} of graded runs (95% Wilson interval {Stats.Interval(Stats.Wilson(resolved, graded.Count))}).\n\n");
+        if (r.Runs > 1)
+        {
+            var k = r.Runs;
+            sb.Append($"Per case, over {k} runs (pass@1 and pass@{k}: at least one of 1 or {k} runs resolves; pass^{k}: all {k} do, which is what one client gets when they need it every time):\n\n");
+            sb.Append($"| Case | Verified | Resolved | pass@1 | pass@{k} | pass^{k} |\n|---|---|---|---|---|---|\n");
+            var perCase = graded.GroupBy(x => x.Id).Select(g => (Id: g.Key, N: g.Count(), C: g.Count(x => x.Hidden!.Resolved), V: g.Count(x => x.Verified))).ToList();
+            foreach (var c in perCase)
+                sb.Append($"| {c.Id} | {c.V}/{c.N} | {c.C}/{c.N} | {Stats.Percent(Stats.PassAtK(c.N, c.C, 1))} | {(c.N >= k ? Stats.Percent(Stats.PassAtK(c.N, c.C, k)) : "")} | {(c.N >= k ? Stats.Percent(Stats.PassHatK(c.N, c.C, k)) : "")} |\n");
+            var full = perCase.Where(c => c.N >= k).ToList();
+            if (full.Count > 0)
+                sb.Append($"| **mean** | | | {Stats.Percent(full.Average(c => Stats.PassAtK(c.N, c.C, 1)))} | {Stats.Percent(full.Average(c => Stats.PassAtK(c.N, c.C, k)))} | {Stats.Percent(full.Average(c => Stats.PassHatK(c.N, c.C, k)))} |\n");
+            sb.Append('\n');
+        }
+        var acc = r.Results.Where(x => x.Acceptance is not null).GroupBy(x => x.Id).Select(g => g.First()).ToList();
         if (acc.Count > 0)
         {
             var onGold = acc.Where(x => x.Acceptance!.PassOnGold is not null).ToList();

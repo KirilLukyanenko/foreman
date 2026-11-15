@@ -54,7 +54,7 @@ public sealed partial class ReviewTools : IToolbox
     private const int AddedLineSlack = 3;
 
     private readonly Job _job;
-    private readonly int _round;
+    private readonly Attempt _attempt;
     private readonly string _dir;
     private readonly Prp _prp;
     private readonly IReadOnlyList<FileChange> _changes;
@@ -62,17 +62,17 @@ public sealed partial class ReviewTools : IToolbox
     private bool _started;
     private int _submissions;
 
-    public ReviewTools(Job job, int round)
+    public ReviewTools(Job job, Attempt attempt)
     {
         _job = job;
-        _round = round;
-        _dir = job.StageDir(Path.Combine("verify", ImplementTools.RoundDir(round)));
+        _attempt = attempt;
+        _dir = job.StageDir(Path.Combine("verify", attempt.Dir));
         _prp = job.ReadJson<Prp>("spec", "prp.json");
         _changes = Patch.Parse(File.ReadAllText(Path.Combine(_dir, "patch.diff")));
         _repo = new RepoReader(job);
     }
 
-    public static string ResultFile(Job job, int round) => Path.Combine(job.Dir, "verify", ImplementTools.RoundDir(round), "review-submission.json");
+    public static string ResultFile(Job job, Attempt attempt) => Path.Combine(job.Dir, "verify", attempt.Dir, "review-submission.json");
 
     public int ToolCalls { get; private set; }
     public ReviewReport? Result { get; private set; }
@@ -87,7 +87,7 @@ public sealed partial class ReviewTools : IToolbox
     {
         _repo.Start();
         _started = true;
-        if (File.Exists(ResultFile(_job, _round))) File.Delete(ResultFile(_job, _round));
+        if (File.Exists(ResultFile(_job, _attempt))) File.Delete(ResultFile(_job, _attempt));
         return Task.CompletedTask;
     }
 
@@ -137,7 +137,7 @@ public sealed partial class ReviewTools : IToolbox
         // The scope filter: minor findings are notes; only blockers and majors go back to the implementer.
         var findings = s.Findings.Where(f => f.Severity is "blocker" or "major").ToList();
         Result = new ReviewReport(s.Verdict, s.Summary, s.Requirements, findings, s.Findings.Except(findings).ToList(), _submissions, errors, null);
-        _job.WriteJson("verify", ImplementTools.RoundDir(_round) + "/review-submission.json", Result);
+        _job.WriteJson("verify", _attempt.Dir + "/review-submission.json", Result);
         return new ToolOutput(errors.Count == 0 ? "ACCEPTED. You are done: stop now." : "Kept with the problems listed as warnings. Stop now.", false);
     }
 
@@ -270,9 +270,9 @@ public sealed partial class ReviewTools : IToolbox
 /// </summary>
 public sealed class Reviewer(IAgentDriver driver, ReviewOptions options, Action<string>? log = null)
 {
-    public async Task<ReviewReport> RunAsync(Job job, int round, string patch, VerifyReport facts, ImplementSubmission? submission, CancellationToken ct)
+    public async Task<ReviewReport> RunAsync(Job job, Attempt round, string patch, VerifyReport facts, ImplementSubmission? submission, CancellationToken ct)
     {
-        var dir = job.StageDir(Path.Combine("verify", ImplementTools.RoundDir(round)));
+        var dir = job.StageDir(Path.Combine("verify", round.Dir));
         var message = FirstMessage(job, patch, facts, submission);
         File.WriteAllText(Path.Combine(dir, "review-task.md"), message, new UTF8Encoding(false));
         var request = new AgentRequest(
@@ -282,19 +282,19 @@ public sealed class Reviewer(IAgentDriver driver, ReviewOptions options, Action<
             Task: message,
             WorkDir: Path.Combine(dir, "review"),
             Toolbox: () => new ReviewTools(job, round),
-            McpArgs: ["review", "--job", job.Id, "--round", round.ToString(System.Globalization.CultureInfo.InvariantCulture)],
+            McpArgs: ["review", "--job", job.Id, .. round.Args],
             Model: options.Model,
             MaxBudgetUsd: options.MaxBudgetUsd,
             ReadOutcome: () => File.Exists(ReviewTools.ResultFile(job, round)) ? "submitted" : null);
 
         log?.Invoke($"  review: {driver.Name}, {options.Model}");
         var summary = await driver.RunAsync(request, ct);
-        job.Event("verify", "review-agent", new { round, summary });
+        job.Event("verify", "review-agent", new { attempt = round.ToString(), summary });
         if (!File.Exists(ReviewTools.ResultFile(job, round)))
             return new ReviewReport("changes_requested", $"the reviewer delivered no review ({summary.Outcome}{(summary.Error is null ? "" : $": {summary.Error}")}); a human must review the change",
                 [], [], [], 0, ["no review"], summary);
         var report = Json.Read<ReviewReport>(File.ReadAllText(ReviewTools.ResultFile(job, round)))! with { Agent = summary };
-        job.WriteJson("verify", ImplementTools.RoundDir(round) + "/review.json", report);
+        job.WriteJson("verify", round.Dir + "/review.json", report);
         log?.Invoke($"  review: {report.Verdict}, {report.Requirements.Count(r => r.Verdict == "met")} of {report.Requirements.Count} requirements met, {report.Findings.Count} finding(s) sent back, {report.Notes.Count} note(s); ${summary.CostUsd:0.00}{(summary.CostIsEstimate ? " (estimate)" : "")}, {summary.Seconds:0} s");
         return report;
     }

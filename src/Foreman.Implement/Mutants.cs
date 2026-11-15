@@ -119,7 +119,8 @@ public static partial class Mutants
     private static List<FileBlock> Split(string diff)
     {
         var files = new List<FileBlock>();
-        var lines = diff.Replace("\r\n", "\n").Split('\n');
+        // Split on LF only: a CRLF file keeps its CRs, or the mutant wouldn't apply.
+        var lines = diff.Split('\n');
         StringBuilder? header = null;
         List<List<string>>? hunks = null;
         string? path = null;

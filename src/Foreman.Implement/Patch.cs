@@ -83,7 +83,10 @@ public static partial class Patch
         return files;
     }
 
-    /// <summary>The part of a diff that touches the files <paramref name="keep"/> accepts, as a diff of its own.</summary>
+    /// <summary>
+    /// The part of a diff that touches the files <paramref name="keep"/> accepts, as a diff of its own, byte for byte:
+    /// a file stored with CRLF has a CR at the end of each of its lines in the diff, and without it the patch won't apply.
+    /// </summary>
     public static string Select(string diff, Func<string, bool> keep)
     {
         var sb = new StringBuilder();
@@ -95,7 +98,7 @@ public static partial class Patch
             if (Parse(text) is [var file, ..] && keep(file.Path)) sb.Append(text);
             block.Clear();
         }
-        foreach (var line in diff.Replace("\r\n", "\n").Split('\n'))
+        foreach (var line in diff.Split('\n'))
         {
             if (line.StartsWith("diff --git ", StringComparison.Ordinal)) Flush();
             if (block.Length > 0 || line.StartsWith("diff --git ", StringComparison.Ordinal)) block.Append(line).Append('\n');

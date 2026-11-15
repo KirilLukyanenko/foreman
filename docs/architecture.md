@@ -253,10 +253,24 @@ Later stages refuse a PRP that changed after approval. Measured with `foreman ev
 the real issues the touch points include all of the real fix's files in 7 of 10 runs (the misses read by hand: one
 defensible alternative, one that follows clarify's default); 1–3 minutes and about $0.57 per PRP (list-price estimate).
 
-### 4. Acceptance tests (later)
-A separate session sees only the PRP and public interfaces and writes black-box tests outside the implementer's
-reach. The tests are tested: they must fail on the base commit, and they must catch a few deliberately broken
-versions of the code (mutants), so that they can't pass trivially. Their checksums are recorded.
+### 4. Acceptance tests (built)
+Model: Claude Opus 5.5. After the PRP is Ready, a separate session sees the PRP and the code before the change, never
+the implementer's work, and writes black-box tests for every acceptance-tested requirement in new files named
+`acceptance`, through the PRP's public interface, together with a **reference fix** of its own in a lab (a throwaway
+copy of the set-up repository, network off). `submit_tests` **tests the tests**, by code, by running them:
+- each declared test exists; tests for new behaviour fail (or don't compile) on the code before the change, tests for
+  kept behaviour pass there;
+- every test passes on the reference fix, which breaks no test that passed before;
+- the tests catch **mutants** of the reference fix, made by code from its diff: a hunk left out (a partial fix) and
+  one classic operator per added line (a comparison or boolean operator flipped, a boolean literal negated, a constant
+  moved by one). At least half must be killed; a mutant that behaves exactly like the fix for every input the PRP
+  allows can be marked equivalent with a reason, which is recorded. Fail-to-pass alone is too weak a check for a
+  generated test (Beyond Fail-to-Pass, 2026; STING): a test a wrong fix also passes doesn't pin the behaviour.
+
+The tests and their checksum go to `acceptance/`; the reference fix is kept for the record and never shown to the
+implementer. Verify adds the tests to each candidate's fresh copy in a run of their own; a failing one goes back to the
+implementer as the requirement and the test's name, never its code. The writer may stop with `give_up` when a
+requirement can't be tested from outside, and lists in `gaps` what it left untested because the PRP left it open.
 
 ### 5. Implement (built: one candidate)
 Model: Claude Opus 5.5. The implementer runs like every other agent here: Claude Code headless on the host (or our
@@ -282,9 +296,12 @@ driver on the host, and the code runs where nothing can reach the network.
   regression and no failing new test. Problems go back; the third submission is kept with warnings.
 - The stage refuses a PRP that isn't Ready or changed after approval.
 
-**Parallel candidates (later, behind a flag):** N = 3–5 independent attempts, each with its own writer and
-sandbox. Claude 4's launch reported SWE-bench Verified 72.5% → 79.4% from parallel attempts filtered by regression
-tests and picked by a scorer.
+**Parallel candidates (built, `--candidates N`):** N independent implementers in parallel, each in its own copy with
+its own fix loop and verification. The kept change is chosen by code: verified; then the most hidden acceptance tests
+passing; then an approving review; then the fewest rounds; then the smallest diff. Claude 4's launch reported
+SWE-bench Verified 72.5% → 79.4% from parallel attempts filtered by tests and picked by a scorer; Trae Agent and
+SWE-Master reach close to pass@k this way. An LLM judge as the last tie-break is left out until the eval shows ties
+that matter.
 
 ### 6. Verify (built)
 Run by the orchestrator, never by the agent, on **fresh copies of the baseline volume with only the patch carried
@@ -350,9 +367,9 @@ line to `metrics/runs.jsonl`. Definitions are written before the first run, as i
 | MCP | Foreman's own MCP server (C# SDK 2.x, spec 2026-07-28) serves each agent's toolbox to Claude Code, the implementer's sandbox tools included. `ask_client` during implementation is later: the PRP is the answer, and `give_up` stops for the human. | now |
 | A2A | No: no agents from other vendors to talk to; worth a mention, not the complexity. | no |
 | Claude Managed Agents | No for now: the point is to show our own sandbox and loop. Mention as the hosted alternative. | no |
-| Evals | Per-stage offline harness with fixed inputs; code graders first (tests), model graders second, calibrated against human labels; 3–5 runs per case; pass@1, pass@k, pass^k with Wilson intervals; paired comparison between versions; a smoke set on every PR and the full set nightly. Ablations: reviewer on/off, N candidates, repo map on/off. | milestone 4 |
+| Evals | Per-stage offline harness with fixed inputs; code graders first (tests), model graders second, calibrated against human labels; 3–5 runs per case; pass@1, pass@k, pass^k with Wilson intervals; paired comparison between versions (McNemar); a smoke set on every PR and the full set nightly. Ablations: reviewer on/off, hidden tests on/off, N candidates. Built: `eval implement --runs --label --reuse-planning`, `eval compare`; the nightly schedule is later. | now |
 | Eval data | SWE-bench Verified is retired as a headline (OpenAI's audit, February 2026). Use fresh, decontaminated tasks (SWE-rebench), SWE-bench Pro public, and SWE-Lancer-style tasks graded end to end, in .NET, TypeScript and Python. | milestone 4 |
-| Red team | Prompt-injection cases in the eval set: instructions planted in README, issue text and rules files. | milestone 4 |
+| Red team | Prompt-injection cases in the eval set: instructions planted in README, issue text and rules files. Built: `eval redteam`, four cases through the whole pipeline, graded by canaries in what Foreman made and ran. | now |
 
 ## 5. Milestones
 

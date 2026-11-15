@@ -156,3 +156,20 @@ public class CandidateTests
         Assert.Equal(["--round", "1", "--candidate", "3"], third.Args);
     }
 }
+
+public class CrlfPatchTests
+{
+    private const string Crlf = "diff --git a/src/A.cs b/src/A.cs\n--- a/src/A.cs\n+++ b/src/A.cs\n@@ -1,3 +1,3 @@\n class A {\r\n-  bool B(int x) => x > 1;\r\n+  bool B(int x) => x >= 1;\r\n }\r\n" +
+                                "diff --git a/tests/AcceptanceTests.cs b/tests/AcceptanceTests.cs\nnew file mode 100644\n--- /dev/null\n+++ b/tests/AcceptanceTests.cs\n@@ -0,0 +1 @@\n+class T {}\r\n";
+
+    [Fact]
+    public void Slicing_a_diff_keeps_the_carriage_returns_of_crlf_files()
+    {
+        var fix = Patch.Select(Crlf, p => p.StartsWith("src/", StringComparison.Ordinal));
+        Assert.Contains("+  bool B(int x) => x >= 1;\r\n", fix);
+        Assert.Contains(" class A {\r\n", fix);
+        Assert.DoesNotContain("AcceptanceTests", fix);
+        var mutant = Assert.Single(Mutants.Of(fix));
+        Assert.Contains("+  bool B(int x) => x > 1;\r\n", mutant.Patch);
+    }
+}

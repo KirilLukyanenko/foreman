@@ -71,3 +71,42 @@ Found and fixed along the way:
 
 Not measured yet: whether the questions improve the final change. That needs the implement stage (milestone 3);
 the plan is Ambig-SWE-style pairs, the same issue with and without a detail removed.
+
+## 15 November 2026: spec
+
+The PRP on Claude Opus 5.5 with the readers' tools and `submit_spec`; code checks the done contract and adds the
+validation commands, known-red tests and the definition of done.
+
+**First run on the Hono issue** (22 tool calls, 213 s, $1.08 estimated). The PRP names the real cause: in
+RegExpRouter, `match.indexOf('', 1)` can't tell an empty parameter capture from the handler marker, so
+`/files/` with `{.*}` picks the wrong slot. It makes every router agree through the shared router test cases,
+fixes TrieRouter's skip of an empty last segment, and lists as anti-patterns the tempting wrong fixes: guarding
+`#dispatch` (the crash becomes a 404), rewriting `.*` to `.+`, adding the case to a router's skip list. The gate
+sent one submission back for a `path:line` without its folder. New cases in existing test files are listed as
+allowed edits with reasons, which is what the diff guard needs.
+
+One defect: that job had no baseline (the eval jobs stop after the code map), and section 8 listed only CI lint
+commands under the heading "verified by recon". Commands now carry whether recon ran them, and a PRP without a
+verified test command says so in bold.
+
+**The eval** (`foreman eval spec`, 14 tasks × 1 run, [results](../evals/spec/results.md)): 14/14 PRPs delivered
+and accepted (8 on the first submission), 108 of 124 requirements checked by a test or a command, about $8 in all.
+On the real issues the touch points include all of the fix's files in 7 of 10 runs (75% of the files). The three
+misses, read by hand:
+- **rich**: the PRP fixes `Text.from_ansi` in `rich/text.py`, the function the issue names, keeping
+  `AnsiDecoder.decode`'s one-Text-per-line contract; upstream changed `rich/ansi.py`. A defensible alternative.
+- **MediatR**: the PRP follows clarify's default (keep the registration, de-duplicate at publish) and changes the
+  wrapper; upstream changed the wrapper and the registrar.
+- **Hono**: this run fixed RegExpRouter where its matcher is built (`trie.ts`) and the lookup, but left TrieRouter
+  out; the first run had TrieRouter's `node.ts`. One run per case is too few to call this stable.
+
+**An hour lost after the work was done.** The Hono PRP was accepted after 3 minutes; Claude Code's closing message
+then hung on API retries for an hour before the process exited. The driver now watches the toolbox's outcome and
+stops Claude Code 90 seconds after the result is in; the run is reported as stopped, not failed, and its cost comes
+from the per-message usage when the final result line is missing.
+
+**The whole pipeline once, on a fresh job** (`foreman run` on humanize at the issue's base commit): intake, go,
+fetch, triage, security, code map, environment (the deterministic plan, no agent), baseline (599 of 623 pass, 24
+skipped), the four readers, clarify (clear: two assumptions, one gap closed by the code) and the spec (7
+requirements, 6 of them checked by a test or a command, accepted on the first submission) in about 4.5 minutes and
+about $0.94 of model use (list-price estimate). This PRP's validation loop has the baseline's verified test command.

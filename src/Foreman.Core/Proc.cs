@@ -3,9 +3,10 @@ using System.Text;
 
 namespace Foreman.Core;
 
-public sealed record ProcResult(int ExitCode, string Stdout, string Stderr, TimeSpan Duration, bool TimedOut)
+/// <param name="Stopped">Ended on purpose by the caller's stop token (its work was already done), not a failure.</param>
+public sealed record ProcResult(int ExitCode, string Stdout, string Stderr, TimeSpan Duration, bool TimedOut, bool Stopped = false)
 {
-    public bool Ok => ExitCode == 0 && !TimedOut;
+    public bool Ok => (ExitCode == 0 || Stopped) && !TimedOut;
 
     /// <summary>The last lines of stdout and stderr together, for error messages and reports.</summary>
     public string Tail(int lines = 40)
@@ -25,7 +26,8 @@ public static class Proc
         TimeSpan? timeout = null,
         IReadOnlyDictionary<string, string?>? env = null,
         CancellationToken ct = default,
-        string? stdin = null)
+        string? stdin = null,
+        CancellationToken stop = default)
     {
         var psi = new ProcessStartInfo(exe)
         {
@@ -53,22 +55,24 @@ public static class Proc
             p.StandardInput.Close();
         }
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (timeout is { } t) cts.CancelAfter(t);
-        var timedOut = false;
+        using var timer = new CancellationTokenSource();
+        if (timeout is { } t) timer.CancelAfter(t);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timer.Token, stop);
+        bool timedOut = false, stopped = false;
         try
         {
             await p.WaitForExitAsync(cts.Token);
         }
         catch (OperationCanceledException)
         {
-            timedOut = !ct.IsCancellationRequested;
+            stopped = stop.IsCancellationRequested && !ct.IsCancellationRequested;
+            timedOut = timer.IsCancellationRequested && !stopped && !ct.IsCancellationRequested;
             try { p.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
             await p.WaitForExitAsync(CancellationToken.None);
-            if (!timedOut) throw;
+            if (ct.IsCancellationRequested) throw;
         }
 
-        return new ProcResult(p.ExitCode, await stdout, await stderr, clock.Elapsed, timedOut);
+        return new ProcResult(stopped ? 0 : p.ExitCode, await stdout, await stderr, clock.Elapsed, timedOut, stopped);
     }
 
     public static async Task<string> GitAsync(string cwd, params string[] args)

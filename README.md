@@ -10,7 +10,7 @@ The design, and what was taken from published coding agents and research, is in
 
 ## Status
 
-Milestone 1, recon, done; milestone 2 under way (intake and clarify built, the spec next).
+Milestone 1, recon, done; milestone 2 (from task text to a Ready spec) done.
 
 | Stage | What it does | Output |
 |---|---|---|
@@ -24,19 +24,20 @@ Milestone 1, recon, done; milestone 2 under way (intake and clarify built, the s
 | baseline | Sets the accepted environment up again from scratch (snapshotting system packages), keeps the snapshot as the job's environment image, runs the tests 3 times with the network off; test names with run-time values are normalised. No model. | `baseline/baseline.json`, per-test verdicts |
 | dossier | Four read-only **readers** in parallel (architecture, conventions, where the task lives, risks) with `list_files`, `read_file`, `search`, `code_map`, `find_symbol`; every file, line and symbol they cite is checked by code before a section is accepted. Plus a short rules file for the implementer, built by code from verified facts. | `dossier/dossier.md`, `dossier/AGENTS.md` |
 | clarify | The under-specification detector (Claude Opus 5.5) after recon: reads the code before asking; each gap is closed by the repository (with evidence), assumed (default stated) or asked (at most 5, each with a default in the client's language). Code checks the rules. | `clarify/questions.md` (a draft for the human to send), `clarify.md`, `questions.json` |
+| spec | The PRP (Claude Opus 5.5): requirements, each with how it is checked (acceptance test, existing tests, a command, or review), the public interface, examples, decisions, where the change goes, tasks. Code enforces the done contract and coverage of the brief and of the client's answers, checks files and symbols, and adds the verified commands. Waits for the client's answers; the human marks it Ready. | `spec/prp.md`, `prp.json`, `ready.json` |
 
 Runs so far, failures and fixes included: [docs/recon-runs.md](docs/recon-runs.md). Nine repositories in .NET,
 TypeScript, JavaScript, Python, Go and Rust; the agent was needed for three of them and took 3–4 tool calls and
 under 90 seconds each.
 
-Every agent (intake, the environment agent, the readers, clarify) works through a **toolbox**, and two interchangeable model loops connect a model to it: `api` (our own loop on the
+Every agent (intake, the environment agent, the readers, clarify, spec) works through a **toolbox**, and two interchangeable model loops connect a model to it: `api` (our own loop on the
 Anthropic C# SDK, with prompt caching, effort and refusal fallbacks; needs an API key, not run yet) and
 `claude-code` (Claude Code headless on a subscription, built-in tools off, the sandbox tools through Foreman's MCP
 server). The model never runs anything on the host.
 
-Measured: localization on 10 real fixed issues ([results](evals/localization/results.md)), intake on 16 labelled tasks ([results](evals/intake/results.md)), clarify on 14 ([results](evals/clarify/results.md)). Intake and clarify runs, failures and fixes: [docs/planning-runs.md](docs/planning-runs.md).
+Measured: localization on 10 real fixed issues ([results](evals/localization/results.md)), intake on 16 labelled tasks ([results](evals/intake/results.md)), clarify on 14 ([results](evals/clarify/results.md)), spec on 14 ([results](evals/spec/results.md)). Intake, clarify and spec runs, failures and fixes: [docs/planning-runs.md](docs/planning-runs.md).
 
-Next: the spec (a PRP with a done contract per item), then implement and verify.
+Next: milestone 3, implement and verify (one candidate, the full gate, the reviewer, the fix loop).
 
 ## Run
 
@@ -47,10 +48,12 @@ dotnet run --project src/Foreman.Cli -- recon <repo path or git url> [--task tas
 dotnet run --project src/Foreman.Cli -- run <repo> --task task.md [--go]                  # intake, recon, clarify
 dotnet run --project src/Foreman.Cli -- recon --job <id> --force environment,baseline     # rerun stages
 dotnet run --project src/Foreman.Cli -- answer <id> --set Q1="..." | --defaults          # record the client's answers
+dotnet run --project src/Foreman.Cli -- ready <id>                                        # approve spec/prp.md
 dotnet run --project src/Foreman.Cli -- show <id>
 dotnet run --project src/Foreman.Cli -- eval localization [--readers]                    # 10 real issues, needs gh
 dotnet run --project src/Foreman.Cli -- eval intake --runs 3                              # after eval localization
 dotnet run --project src/Foreman.Cli -- eval clarify --runs 3
+dotnet run --project src/Foreman.Cli -- eval spec
 ```
 
 Jobs are stored in `%LOCALAPPDATA%/Foreman/jobs` (or `$FOREMAN_HOME/jobs`).

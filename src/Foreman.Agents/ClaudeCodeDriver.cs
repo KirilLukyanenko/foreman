@@ -79,12 +79,19 @@ public sealed class ClaudeCodeDriver(string model = ApiDriver.DefaultModel, deci
         // wait for an MCP tool.
         var env = new Dictionary<string, string?> { ["MCP_TOOL_TIMEOUT"] = "3600000", ["MCP_TIMEOUT"] = "120000" };
         ProcResult r;
+        // Once the toolbox has the result, the agent's work is done; Claude Code still writes a closing message, and
+        // that last turn has hung for an hour on API retries. Give it a grace period, then stop it.
+        using var stop = new CancellationTokenSource();
+        using var watching = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var watcher = request.ReadOutcome is null ? Task.CompletedTask : StopAfterOutcomeAsync(request.ReadOutcome, stop, watching.Token);
         try
         {
-            r = await Proc.RunAsync(Environment.GetEnvironmentVariable("CLAUDE_BIN") ?? "claude", args, cwd, timeout ?? TimeSpan.FromMinutes(90), env, ct, stdin: request.Task);
+            r = await Proc.RunAsync(Environment.GetEnvironmentVariable("CLAUDE_BIN") ?? "claude", args, cwd, timeout ?? TimeSpan.FromMinutes(90), env, ct, stdin: request.Task, stop: stop.Token);
         }
         finally
         {
+            await watching.CancelAsync();
+            try { await watcher; } catch (OperationCanceledException) { }
             // Claude Code ends its MCP servers without a graceful shutdown, so the toolbox can't release what it
             // holds (a sandbox container, a volume): the request's cleanup does it here.
             if (request.Cleanup is not null) await request.Cleanup();
@@ -98,10 +105,21 @@ public sealed class ClaudeCodeDriver(string model = ApiDriver.DefaultModel, deci
             ?? stream.Subtype ?? (r.Ok ? "finished" : $"exit {r.ExitCode}");
         span?.SetTag("foreman.outcome", outcome);
 
-        return new AgentRunSummary(Name, runModel, outcome, stream.Turns, stream.ToolCalls, stream.CostUsd, CostIsEstimate: true,
+        // Without Claude Code's final result line (stopped after the outcome), cost comes from the per-message usage.
+        var cost = stream.Subtype is null ? Pricing.Cost(runModel, stream.Usage) ?? 0 : stream.CostUsd;
+        return new AgentRunSummary(Name, runModel, outcome, stream.Turns, stream.ToolCalls, cost, CostIsEstimate: true,
             stream.Usage.Input, stream.Usage.Output, stream.Usage.CacheRead, stream.Usage.CacheWrite,
             Math.Round(clock.Elapsed.TotalSeconds, 1), request.System.Sha256,
-            r.Ok ? null : r.Tail(5));
+            r.Stopped ? $"stopped {OutcomeGrace.TotalSeconds:0} s after the result was in" : r.Ok ? null : r.Tail(5));
+    }
+
+    internal static readonly TimeSpan OutcomeGrace = TimeSpan.FromSeconds(90);
+
+    private static async Task StopAfterOutcomeAsync(Func<string?> readOutcome, CancellationTokenSource stop, CancellationToken ct)
+    {
+        while (readOutcome() is null) await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        await Task.Delay(OutcomeGrace, ct);
+        await stop.CancelAsync();
     }
 
     internal sealed record StreamSummary(int Turns, int ToolCalls, decimal CostUsd, TokenUsage Usage, string? Subtype);
@@ -114,6 +132,7 @@ public sealed class ClaudeCodeDriver(string model = ApiDriver.DefaultModel, deci
     {
         var toolCalls = 0;
         JsonNode? result = null;
+        var messages = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
         foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             JsonNode? node;
@@ -121,17 +140,23 @@ public sealed class ClaudeCodeDriver(string model = ApiDriver.DefaultModel, deci
             catch (JsonException) { continue; }
             var type = node?["type"]?.GetValue<string>();
             if (type == "assistant" && node?["message"]?["content"] is JsonArray content)
+            {
                 toolCalls += content.Count(c => c?["type"]?.GetValue<string>() == "tool_use");
+                // One API message arrives as several lines (one per content block), each with the same usage.
+                if (node["message"]?["id"]?.GetValue<string>() is { } id && node["message"]?["usage"] is { } u) messages[id] = u;
+            }
             else if (type == "result")
                 result = node;
         }
 
-        long Long(string key) => result?["usage"]?[key] is JsonValue v && v.TryGetValue<long>(out var l) ? l : 0;
+        static long Long(JsonNode? usage, string key) => usage?[key] is JsonValue v && v.TryGetValue<long>(out var l) ? l : 0;
+        static TokenUsage Usage(IEnumerable<JsonNode?> usages) => usages.Aggregate(TokenUsage.Zero, (t, u) =>
+            t.Add(Long(u, "input_tokens"), Long(u, "output_tokens"), Long(u, "cache_read_input_tokens"), Long(u, "cache_creation_input_tokens")));
         return new StreamSummary(
-            result?["num_turns"]?.GetValue<int>() ?? 0,
+            result?["num_turns"]?.GetValue<int>() ?? messages.Count,
             toolCalls,
             result?["total_cost_usd"] is JsonValue c && c.TryGetValue<decimal>(out var cost) ? Math.Round(cost, 4) : 0,
-            new TokenUsage(Long("input_tokens"), Long("output_tokens"), Long("cache_read_input_tokens"), Long("cache_creation_input_tokens")),
+            result is null ? Usage(messages.Values) : Usage([result["usage"]]),
             result?["subtype"]?.GetValue<string>());
     }
 

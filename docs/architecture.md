@@ -41,7 +41,7 @@ Status: design, 14 November 2026. Each capability below is marked **now** (in th
     1e Dossier ──────────▶ dossier.md          4 read-only readers: architecture, conventions, task location, risks
                             rules/AGENTS.md     minimal agent rules, kept outside the client repository
  2  Clarify ────────────▶ questions.md ─▶ [human sends to client, records answers]
- 3  Spec ───────────────▶ PRP with a "done" contract per item ─▶ [human: Ready]
+ 3  Spec ───────────────▶ prp.md, prp.json   requirements with checks, interface, examples ─▶ [human: Ready]
  4  Acceptance ─────────▶ hidden tests       separate session, sees only the PRP; tests are themselves tested
         │  found gaps ─▶ back to 3
  5  Implement ──────────▶ N candidate branches   one writer per candidate, each in its own sandbox
@@ -209,9 +209,38 @@ that asked were on MediatR, where the question is real); about $0.19 and under a
 During implementation the agent will ask through an `ask_client` MCP tool; the orchestrator answers from the spec
 and defaults or pauses the job for the human (later).
 
-### 3. Spec (later)
-The comp-ledger PRP template, extended with "what the repository already has" from the dossier, and a
-**done contract**: every item states how it will be verified.
+### 3. Spec (built)
+Model: Claude Opus 5.5, with the readers' read-only tools and `submit_spec`. The comp-ledger PRP template, cut to one
+change: goal, why, requirements, public interface, Given/When/Then examples, out of scope, decisions, where the
+change goes, gotchas, tasks with "done when", anti-patterns. It runs only once the client's answers are recorded
+(or the defaults accepted).
+
+The **done contract**: every requirement names how it will be checked (`acceptance_test` through the public
+interface, `existing_tests`, a `command`, or `review` for what tests can't show), and the change is done when those
+checks pass. Requirements are phrased EARS-style ("When <trigger>, <the system> shall <response>"), as in Kiro;
+EARS only fixes the wording, so the checks are what make them executable. Code holds the spec to it before
+accepting:
+- every requirement has a check, and most are checked by a test or a command, not by review; a bug, feature or
+  refactor has at least one requirement checked by a test;
+- every explicit acceptance criterion of the brief (C1...) is covered by a requirement, and every answer and
+  assumption from clarify (Q1, A1...) shapes a requirement or a decision, so nothing the client said is dropped;
+- every acceptance-tested requirement has an example, and every example names real requirements;
+- existing interface symbols and touched files exist where the spec says (code index), new files don't exist yet,
+  and every `path:line` in the text is real;
+- a bug starts with a `reproduce` task: a test that fails on the current code.
+
+Code, not the model, adds the validation commands (the baseline's verified test command; CI's lint commands, marked
+as not run; a loud note when none was verified), the known-red tests, generated and vendored files, the definition of
+done and how the PRP is checked beyond the implementer. Protected paths the change truly needs (a new case in an
+existing test file, a lockfile for an added dependency) are listed with reasons in `allowed_edits`, which Verify's
+diff guard will read.
+
+The PRP is a draft until the human runs `foreman ready`, which records the hashes of `prp.md` and `prp.json`; a
+hand edit to `prp.md` is kept (the status line changes in place) and marked, and `prp.md` is then the contract.
+Later stages refuse a PRP that changed after approval. Measured with `foreman eval spec`
+([results](../evals/spec/results.md)): 14/14 PRPs accepted, 108 of 124 requirements checked by a test or a command; on
+the real issues the touch points include all of the real fix's files in 7 of 10 runs (the misses read by hand: one
+defensible alternative, one that follows clarify's default); 1–3 minutes and about $0.57 per PRP (list-price estimate).
 
 ### 4. Acceptance tests (later)
 A separate session sees only the PRP and public interfaces and writes black-box tests outside the implementer's

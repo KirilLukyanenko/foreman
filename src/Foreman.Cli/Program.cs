@@ -3,6 +3,7 @@ using Foreman.Core;
 using Foreman.Evals;
 using Foreman.Planning.Clarify;
 using Foreman.Planning.Intake;
+using Foreman.Planning.Spec;
 using Foreman.Recon;
 using Foreman.Recon.Baseline;
 using Foreman.Recon.CodeMap;
@@ -32,6 +33,8 @@ switch (args.FirstOrDefault())
         return await Recon();
     case "answer":
         return Answer(args.ElementAtOrDefault(1));
+    case "ready":
+        return MarkReady(args.ElementAtOrDefault(1));
     case "eval":
         return await Eval();
     case "show":
@@ -46,12 +49,14 @@ switch (args.FirstOrDefault())
               foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3]
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
-                            [--intake-model id] [--clarify-model id] [--go]
-              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify]
+                            [--intake-model id] [--clarify-model id] [--spec-model id] [--go]
+              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec]
               foreman answer <job id> [--set Q1="..."]... [--defaults]
+              foreman ready <job id>                      mark the PRP (spec/prp.md) as reviewed and approved
               foreman show <job id>
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
+              foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -93,7 +98,12 @@ async Task<int> Recon()
         new BaselineStage(options, Console.WriteLine),
         new DossierStage(driver, new DossierOptions(Arg("--reader-model") ?? DossierOptions.DefaultModel,
             Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries)), Console.WriteLine),
-        .. hasTask ? new IStage[] { new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine) } : [],
+        .. hasTask ? new IStage[]
+        {
+            new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine),
+            // Waits (fails with the reason) until the client's answers are recorded; rerun the job after 'foreman answer'.
+            new SpecStage(driver, new SpecOptions(Arg("--spec-model") ?? SpecOptions.DefaultModel), Console.WriteLine),
+        } : [],
     ];
     // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
     if (Arg("--stages")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal) is { } only)
@@ -108,6 +118,7 @@ async Task<int> Eval()
 {
     if (args.ElementAtOrDefault(1) == "intake") return await EvalIntake();
     if (args.ElementAtOrDefault(1) == "clarify") return await EvalClarify();
+    if (args.ElementAtOrDefault(1) == "spec") return await EvalSpec();
     if (args.ElementAtOrDefault(1) != "localization") { Console.Error.WriteLine("eval: 'localization', 'intake' or 'clarify'"); return 2; }
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "localization", "cases.json");
     var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
@@ -140,6 +151,23 @@ async Task<int> EvalIntake()
     return 0;
 }
 
+async Task<int> EvalSpec()
+{
+    var casesFile = Arg("--cases") ?? Path.Combine("evals", "spec", "cases.json");
+    var outDir = Arg("--out") ?? Path.GetDirectoryName(casesFile)!;
+    var cases = SpecEval.ReadCases(casesFile);
+    if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
+    var driver = Driver() ?? throw new InvalidOperationException("eval spec needs a model");
+    var runs = int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 1;
+    var report = await new SpecEval(home, driver, Arg("--spec-model"), Console.WriteLine).RunAsync(cases, casesFile, runs, cts.Token);
+    File.WriteAllText(Path.Combine(outDir, "results.json"), Json.Write(report));
+    var md = SpecEval.Markdown(report, cases);
+    File.WriteAllText(Path.Combine(outDir, "results.md"), md);
+    Console.WriteLine();
+    Console.WriteLine(md);
+    return 0;
+}
+
 async Task<int> EvalClarify()
 {
     var casesFile = Arg("--cases") ?? Path.Combine("evals", "clarify", "cases.json");
@@ -165,6 +193,7 @@ IToolbox Toolbox(string? kind)
         "environment" => new EnvironmentTools(job, Required("--stack"), job.ReadJson<TriageReport>("triage", "triage.json").RemovedAgentConfig, startImage: Required("--image")),
         "reader" => new ReaderTools(job, Required("--section")),
         "intake" => new IntakeTools(job),
+        "spec" => new SpecTools(job),
         "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),
         _ => throw new ArgumentException($"unknown toolbox '{kind}'"),
     };
@@ -208,6 +237,18 @@ int Answer(string? id)
         Console.Error.WriteLine($"answer: {e.Message}");
         return 1;
     }
+}
+
+int MarkReady(string? id)
+{
+    if (id is null) { Console.Error.WriteLine("ready: job id required"); return 2; }
+    var job = Job.Open(home, id);
+    if (!File.Exists(Path.Combine(job.Dir, "spec", "prp.json"))) { Console.Error.WriteLine("ready: no PRP yet; run the spec stage first"); return 1; }
+    var warnings = job.ReadJson<Prp>("spec", "prp.json").Warnings;
+    var mark = Ready.Mark(job);
+    Console.WriteLine($"PRP marked Ready ({mark.PrpSha256[..12]}){(mark.EditedByHand ? "; prp.md was edited by hand and is the contract" : "")}");
+    foreach (var w in warnings) Console.WriteLine($"  note, not fully checked: {w}");
+    return 0;
 }
 
 int Show(string? id)
@@ -291,6 +332,12 @@ int Show(string? id)
         var answered = File.Exists(Path.Combine(job.Dir, "clarify", "answers.json"));
         Console.WriteLine($"clarify     {c.Verdict}: {c.Questions} questions, {c.Assumptions} assumptions, {c.FromRepository} answered by the code{(c.HadDossier ? "" : " (no dossier)")}; {c.Agent.ToolCalls} tool calls, ${c.Agent.CostUsd:0.00}{(c.Agent.CostIsEstimate ? " (estimate)" : "")}, {c.Agent.Seconds:0} s");
         Console.WriteLine($"            {(c.Questions == 0 ? "nothing to send" : answered ? "answers recorded" : $"waiting for answers: send clarify/questions.md, then foreman answer {job.Id}")}");
+    }
+    if (File.Exists(Path.Combine(job.Dir, "spec", "spec.json")))
+    {
+        var r = job.ReadJson<SpecReport>("spec", "spec.json");
+        Console.WriteLine($"spec        {r.Requirements} requirements ({string.Join(", ", r.Checks.Select(c => $"{c.Value} {c.Key.Replace('_', ' ')}"))}), {r.Examples} examples, {r.Tasks} tasks; {r.Submissions} submissions{(r.Warnings.Count > 0 ? $", {r.Warnings.Count} warnings" : "")}; {r.Agent.ToolCalls} tool calls, ${r.Agent.CostUsd:0.00}{(r.Agent.CostIsEstimate ? " (estimate)" : "")}, {r.Agent.Seconds:0} s");
+        Console.WriteLine($"            {Ready.Check(job) ?? "Ready"}");
     }
     return 0;
 }

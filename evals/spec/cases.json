@@ -1,0 +1,16 @@
+[
+  { "id": "guardclauses-string-length", "note": "the guard exists; the default is to keep it and add the missing piece" },
+  { "id": "hono-rate-limit", "note": "a new middleware with a pluggable store (clarify's default)" },
+  { "id": "humanize-ru-sizes", "note": "Russian sizes through the library's locales (clarify's default)" },
+  { "id": "itsdangerous-stronger-algorithm", "note": "the digest is configurable; the default decides the scope" },
+  { "id": "ardalis-GuardClauses-339", "localization": true },
+  { "id": "App-vNext-Polly-2815", "localization": true },
+  { "id": "FluentValidation-FluentValidation-2240", "localization": true },
+  { "id": "jbogard-MediatR-1118", "localization": true },
+  { "id": "honojs-hono-4325", "localization": true },
+  { "id": "unjs-defu-119", "localization": true },
+  { "id": "pallets-itsdangerous-375", "localization": true },
+  { "id": "python-humanize-humanize-239", "localization": true },
+  { "id": "Textualize-rich-3577", "localization": true },
+  { "id": "spf13-cobra-2240", "localization": true }
+]

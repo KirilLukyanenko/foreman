@@ -237,7 +237,7 @@ public sealed class PlanningTests : IDisposable
     public void Gaps_are_numbered_questions_first_by_impact()
     {
         var numbered = ClarifyTools.Number([Assume(), Ask("medium", "Medium?"), Ask("high", "High?"), new Gap("scope", "x", "repository", "y", "low", Evidence: [new Citation("./src/export/csv.py", 1)])]);
-        Assert.Equal(["Q1", "Q2", "A1", "R1"], numbered.Select(g => g.Id));
+        Assert.Equal(["Q1", "Q2", "A1", "K1"], numbered.Select(g => g.Id));
         Assert.Equal("High?", numbered[0].Question);
         Assert.Equal("src/export/csv.py", numbered[3].Evidence![0].Path);
     }

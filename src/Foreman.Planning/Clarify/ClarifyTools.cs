@@ -150,12 +150,12 @@ public sealed class ClarifyTools : IToolbox
         };
     }
 
-    /// <summary>Questions first, most important first, then assumptions, then what the code answered: Q1, A1, R1.</summary>
+    /// <summary>Questions first, most important first, then assumptions, then what the code answered (known): Q1, A1, K1.</summary>
     internal static IReadOnlyList<Gap> Number(IReadOnlyList<Gap> gaps)
     {
         int Rank(string impact) => Array.IndexOf(Impacts, impact) is var i and >= 0 ? i : 3;
         var result = new List<Gap>();
-        foreach (var (resolution, prefix) in new[] { ("ask", "Q"), ("assume", "A"), ("repository", "R") })
+        foreach (var (resolution, prefix) in new[] { ("ask", "Q"), ("assume", "A"), ("repository", "K") })
         {
             var n = 0;
             foreach (var g in gaps.Where(g => g.Resolution == resolution).OrderBy(g => Rank(g.Impact)))

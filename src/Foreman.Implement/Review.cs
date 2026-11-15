@@ -315,6 +315,7 @@ public sealed class Reviewer(IAgentDriver driver, ReviewOptions options, Action<
         if (facts.Tests is { } t) sb.Append(t.Summary(10)).Append('\n');
         if (facts.Repro is { } r)
             sb.Append($"Fail-to-pass of the new tests: {r.Reproducing.Count} fail before the change and pass after it{(r.Reproducing.Count > 0 ? $" ({string.Join(", ", r.Reproducing.Take(10))})" : "")}; {r.PassBefore.Count} pass either way{(r.PassBefore.Count > 0 ? $" ({string.Join(", ", r.PassBefore.Take(10))})" : "")}.\n");
+        if (facts.Hidden is { } h) sb.Append($"Hidden acceptance tests (written from the PRP by a separate session): {h.Passing.Count} of {h.Tests} pass.\n");
         foreach (var l in facts.Lint) sb.Append($"Lint `{l.Command}`: before {l.Before}, after {l.After}.\n");
         var notes = facts.Guard.Where(g => !g.Blocks).ToList();
         if (notes.Count > 0)

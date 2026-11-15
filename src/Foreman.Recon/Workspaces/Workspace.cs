@@ -94,6 +94,16 @@ public sealed class Workspace : IAsyncDisposable
         return r.Stdout;
     }
 
+    /// <summary>
+    /// Back to <paramref name="start"/>: tracked files reset and files the change added removed (the diff adds them to
+    /// the index). Ignored and excluded files, installed packages and build outputs, stay.
+    /// </summary>
+    public async Task ResetAsync(string start, CancellationToken ct = default)
+    {
+        var r = await BashAsync($"{Git} add -A -- {Pathspec} && {Git} reset -q --hard {Quote(start)}", TimeSpan.FromMinutes(5), ct);
+        if (!r.Ok) throw new InvalidOperationException($"resetting the copy failed: {r.Tail(5)}");
+    }
+
     /// <summary>Applies a patch to the working tree; with <paramref name="only"/>, just those files.</summary>
     public async Task<string?> ApplyAsync(string patch, IReadOnlyList<string>? only = null, CancellationToken ct = default)
     {

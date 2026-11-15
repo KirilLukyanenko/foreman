@@ -1,22 +1,21 @@
 using System.Text.Json;
 using Foreman.Core;
 using Foreman.Recon.Dossier;
-using Foreman.Recon.Workspaces;
 using Foreman.Sandbox;
 
-namespace Foreman.Planning.Spec;
+namespace Foreman.Recon.Workspaces;
 
 /// <summary>
-/// The spec writer's lab: a throwaway copy of the set-up repository (the baseline's volume) with the network off, as
-/// the unprivileged user. The PRP makes claims about code it has only read: what a call returns today, which tests
-/// pin the behaviour that changes, whether an expected value can hold. Read-only tools can't check those; running can.
-/// The writer runs snippets and single tests, sketches the change it is about to specify and runs the whole suite
-/// against the baseline. The sketch is thrown away: the implementer never sees it, so the PRP stays the only contract.
-/// What the last suite run showed is what <c>submit_spec</c> holds the PRP to (<see cref="SpecTools.CheckLab"/>).
+/// A writer's lab: a throwaway copy of the set-up repository (the baseline's volume) with the network off, as the
+/// unprivileged user. The spec writer checks the PRP's claims about the code by running them and sketches the change
+/// against the whole suite; the acceptance test writer writes its tests next to a reference fix and has them tested
+/// on the code before the change, on the reference and on broken versions of it (<see cref="RunStateAsync"/>).
+/// Nothing in a lab reaches the implementer: each stage removes its lab when its writer stops.
 /// </summary>
-public sealed class SpecLab(Job job, string dir) : IAsyncDisposable
+public sealed class Lab(Job job, string dir, string suffix) : IAsyncDisposable
 {
-    public const string Suffix = "spec-lab";
+    public const string SpecSuffix = "spec-lab";
+    public const string AcceptanceSuffix = "accept-lab";
     public const int MaxCommandSeconds = 600;
     private const int MaxOutputChars = 10_000;
 
@@ -49,7 +48,7 @@ public sealed class SpecLab(Job job, string dir) : IAsyncDisposable
     {
         if (_ws is not null) return _ws;
         if (Unavailable is { } why) throw new InvalidOperationException($"the lab is not available: {why}");
-        var sandbox = new DockerSandbox(job.Id, suffix: Suffix);
+        var sandbox = new DockerSandbox(job.Id, suffix: suffix);
         await Workspace.CreateAsync(sandbox, _env!);
         _ws = await Workspace.OpenAsync(sandbox.Volume, _env!);
         _start = await _ws.MarkStartAsync(ct);
@@ -81,6 +80,28 @@ public sealed class SpecLab(Job job, string dir) : IAsyncDisposable
         return new ToolOutput($"{files}\n{run.Delta.Summary(25)}\n(exit {run.ExitCode}, {run.Seconds} s)", false);
     }
 
+    /// <summary>Everything changed in the lab since it opened (caches and build outputs excluded).</summary>
+    public async Task<string> DiffAsync(CancellationToken ct) => await (await OpenAsync(ct)).DiffAsync(_start!, ct);
+
+    /// <summary>
+    /// Puts the lab back to how it opened, applies <paramref name="patches"/> in order and runs the tests. The caller
+    /// restores the writer's own state afterwards with <see cref="RestoreAsync"/>.
+    /// </summary>
+    public async Task<TestRun> RunStateAsync(string label, IReadOnlyList<string> patches, CancellationToken ct)
+    {
+        await RestoreAsync(patches, ct);
+        return await (await OpenAsync(ct)).RunTestsAsync(Path.Combine(dir, "lab", label), ct);
+    }
+
+    /// <summary>The lab as it opened, plus <paramref name="patches"/>; throws with git's message if one doesn't apply.</summary>
+    public async Task RestoreAsync(IReadOnlyList<string> patches, CancellationToken ct)
+    {
+        var ws = await OpenAsync(ct);
+        await ws.ResetAsync(_start!, ct);
+        foreach (var p in patches.Where(p => p.Trim().Length > 0))
+            if (await ws.ApplyAsync(p, ct: ct) is { } error) throw new InvalidOperationException($"a patch doesn't apply in the lab: {error}");
+    }
+
     /// <summary>The files a diff touches, from its <c>diff --git</c> headers.</summary>
     internal static IReadOnlyList<string> SketchFiles(string diff) =>
         diff.Replace("\r\n", "\n").Split('\n')
@@ -98,9 +119,9 @@ public sealed class SpecLab(Job job, string dir) : IAsyncDisposable
     }
 
     /// <summary>Removes the lab's container and volume. The stage calls it after the writer stops, however it stopped.</summary>
-    public static async Task RemoveAsync(Job job)
+    public static async Task RemoveAsync(Job job, string suffix)
     {
-        var sandbox = new DockerSandbox(job.Id, suffix: Suffix);
+        var sandbox = new DockerSandbox(job.Id, suffix: suffix);
         await Proc.RunAsync("docker", ["rm", "-f", $"{sandbox.Volume}-session"], timeout: TimeSpan.FromMinutes(1));
         await sandbox.RemoveAsync();
     }

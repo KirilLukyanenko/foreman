@@ -54,8 +54,8 @@ switch (args.FirstOrDefault())
                             [--agent auto|claude-code|api|none] [--model id] [--effort low|medium|high] [--budget usd]
                             [--reader-model id] [--sections architecture,conventions,task,risks]
                             [--intake-model id] [--clarify-model id] [--spec-model id] [--go]
-                            [--implement-model id] [--review-model id] [--rounds 3] [--no-review]
-              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec,implement]
+                            [--acceptance-model id] [--no-acceptance] [--implement-model id] [--review-model id] [--rounds 3] [--no-review]
+              foreman recon --job <id> [--force intake,go,fetch,triage,security,codemap,environment,baseline,dossier,clarify,spec,accept,implement]
               foreman answer <job id> [--set Q1="..."]... [--defaults]
               foreman ready <job id>                      mark the PRP (spec/prp.md) as reviewed and approved
               foreman verify <job id> [--round n] [--no-review]   verify implement/patch.diff again
@@ -63,7 +63,7 @@ switch (args.FirstOrDefault())
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
-              foreman eval implement [--only id,id] [--keep-spec] [--implement-model id] [--review-model id] [--rounds 3]
+              foreman eval implement [--only id,id] [--keep-spec] [--no-acceptance] [--implement-model id] [--review-model id] [--rounds 3]
               foreman eval localization [--cases evals/localization/cases.json] [--out evals/localization] [--force]
                                     [--readers [--agent claude-code|api] [--reader-model id]] [--only id,id]
             """);
@@ -105,14 +105,16 @@ async Task<int> Recon()
         new BaselineStage(options, Console.WriteLine),
         new DossierStage(driver, new DossierOptions(Arg("--reader-model") ?? DossierOptions.DefaultModel,
             Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries)), Console.WriteLine),
-        .. hasTask ? new IStage[]
-        {
-            new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine),
-            // Waits (fails with the reason) until the client's answers are recorded; rerun the job after 'foreman answer'.
-            new SpecStage(driver, new SpecOptions(Arg("--spec-model") ?? SpecOptions.DefaultModel), Console.WriteLine),
-            // Waits (fails with the reason) until the human marks the PRP Ready with 'foreman ready'.
-            new ImplementStage(driver, ImplementOptionsFromArgs(), Console.WriteLine),
-        } : [],
+        .. hasTask ? TaskStages() : [],
+    ];
+    IStage[] TaskStages() =>
+    [
+        new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine),
+        // Waits (fails with the reason) until the client's answers are recorded; rerun the job after 'foreman answer'.
+        new SpecStage(driver, new SpecOptions(Arg("--spec-model") ?? SpecOptions.DefaultModel), Console.WriteLine),
+        // Waits (fails with the reason) until the human marks the PRP Ready with 'foreman ready'.
+        .. args.Contains("--no-acceptance") ? Array.Empty<IStage>() : [new AcceptanceStage(driver, AcceptanceOptionsFromArgs(), Console.WriteLine)],
+        new ImplementStage(driver, ImplementOptionsFromArgs(), Console.WriteLine),
     ];
     // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
     if (Arg("--stages")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal) is { } only)
@@ -185,7 +187,7 @@ async Task<int> EvalImplement()
     var cases = ImplementEval.ReadCases(casesFile);
     if (Arg("--only") is { } only) cases = cases.Where(c => only.Split(',').Contains(c.Id)).ToList();
     var driver = Driver() ?? throw new InvalidOperationException("eval implement needs a model");
-    var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec")).RunAsync(cases, casesFile, cts.Token);
+    var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec"), args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs()).RunAsync(cases, casesFile, cts.Token);
     var name = Arg("--only") is null ? "results" : "results-partial";
     File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
     var md = ImplementEval.Markdown(report);
@@ -221,6 +223,7 @@ IToolbox Toolbox(string? kind)
         "reader" => new ReaderTools(job, Required("--section")),
         "intake" => new IntakeTools(job),
         "spec" => new SpecTools(job),
+        "accept" => new AcceptanceTools(job),
         "implement" => new ImplementTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
         "review" => new ReviewTools(job, int.Parse(Required("--round"), System.Globalization.CultureInfo.InvariantCulture)),
         "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),
@@ -242,6 +245,8 @@ IAgentDriver? Driver()
         _ => null,
     };
 }
+
+AcceptanceOptions AcceptanceOptionsFromArgs() => new(Arg("--acceptance-model") ?? AcceptanceOptions.DefaultModel);
 
 ImplementOptions ImplementOptionsFromArgs() => new(
     Model: Arg("--implement-model") ?? ImplementOptions.DefaultModel,

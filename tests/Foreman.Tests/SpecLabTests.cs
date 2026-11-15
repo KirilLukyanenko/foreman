@@ -63,5 +63,5 @@ public class SpecLabTests
 
     [Fact]
     public void Sketch_files_come_from_the_diff_headers() =>
-        Assert.Equal(["src/a.py", "tests/test a.py"], SpecLab.SketchFiles("diff --git a/src/a.py b/src/a.py\n+x\ndiff --git a/tests/test a.py b/tests/test a.py\n"));
+        Assert.Equal(["src/a.py", "tests/test a.py"], Lab.SketchFiles("diff --git a/src/a.py b/src/a.py\n+x\ndiff --git a/tests/test a.py b/tests/test a.py\n"));
 }

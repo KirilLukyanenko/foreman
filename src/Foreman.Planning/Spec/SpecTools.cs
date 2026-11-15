@@ -28,7 +28,7 @@ public sealed record SpecSubmission(SpecDraft Draft, IReadOnlyList<string> Warni
 /// code checks the done contract: every requirement has a check, most of them executable; every explicit acceptance
 /// criterion of the brief is covered; every answer and assumption from clarify is used; examples point at real
 /// requirements; existing interface symbols and touched files exist where the spec says; a bug starts with a
-/// failing reproduction. With a verified test environment the writer also has a lab (<see cref="SpecLab"/>); a bug or
+/// failing reproduction. With a verified test environment the writer also has a lab (<see cref="Lab"/>); a bug or
 /// feature PRP must then survive a sketch of its own change against the whole suite (<see cref="CheckLab"/>).
 /// </summary>
 public sealed partial class SpecTools : IToolbox
@@ -40,7 +40,7 @@ public sealed partial class SpecTools : IToolbox
     private readonly string _dir;
     private readonly SpecContext _context;
     private readonly RepoReader _repo;
-    private readonly SpecLab _lab;
+    private readonly Lab _lab;
     private bool _started;
     private int _submissions;
 
@@ -50,7 +50,7 @@ public sealed partial class SpecTools : IToolbox
         _dir = job.StageDir("spec");
         _repo = new RepoReader(job);
         _context = SpecStage.Context(job);
-        _lab = new SpecLab(job, _dir);
+        _lab = new Lab(job, _dir, Lab.SpecSuffix);
     }
 
     public int ToolCalls { get; private set; }
@@ -60,7 +60,7 @@ public sealed partial class SpecTools : IToolbox
     public static string ResultFile(Job job) => Path.Combine(job.Dir, "spec", "submission.json");
 
     public IReadOnlyList<ToolDefinition> Definitions =>
-        _lab.Unavailable is null ? [.. RepoReader.ReadTools, SpecLab.Run, SpecLab.RunTests, SubmitSpec] : [.. RepoReader.ReadTools, SubmitSpec];
+        _lab.Unavailable is null ? [.. RepoReader.ReadTools, Lab.Run, Lab.RunTests, SubmitSpec] : [.. RepoReader.ReadTools, SubmitSpec];
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -83,7 +83,7 @@ public sealed partial class SpecTools : IToolbox
                 output = name switch
                 {
                     "submit_spec" => Submit(input),
-                    "lab_run" => await _lab.RunAsync(ToolInput.String(input, "command") ?? "", SpecLab.Int(input, "timeout_seconds"), ct),
+                    "lab_run" => await _lab.RunAsync(ToolInput.String(input, "command") ?? "", Lab.Int(input, "timeout_seconds"), ct),
                     "lab_run_tests" => await _lab.RunTestsAsync(ct),
                     _ => _repo.Call(name, input),
                 };

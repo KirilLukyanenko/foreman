@@ -28,9 +28,17 @@ public sealed record HiddenTests(string MergeCommit, IReadOnlyList<string> TestF
 /// </summary>
 public sealed record HiddenGrade(bool Resolved, int FailToPass, IReadOnlyList<string> FailToPassFailing, int PassToPass, IReadOnlyList<string> PassToPassBroken, string? Error = null);
 
+/// <summary>
+/// Foreman's own hidden acceptance tests, graded against the maintainers' fix: tests that fail on the real fix assert
+/// something the maintainers didn't do (a different but maybe defensible PRP, or a wrong test).
+/// </summary>
+/// <param name="PassOnGold">How many of the tests pass with the maintainers' code change applied to the base commit.</param>
+public sealed record AcceptanceGrade(string Status, int Tests, int FailOnBase, double? MutationScore, int? PassOnGold, IReadOnlyList<string> FailingOnGold, decimal CostUsd, string? Error = null);
+
 public sealed record ImplementRun(
     string Id, string Language, string? Stage, string Status, string? Reason, int Rounds, bool Verified, string? ReviewVerdict,
-    HiddenGrade? Hidden, int FilesChanged, int LinesAdded, int LinesRemoved, decimal ImplementCostUsd, decimal PlanningCostUsd, double Seconds);
+    HiddenGrade? Hidden, int FilesChanged, int LinesAdded, int LinesRemoved, decimal ImplementCostUsd, decimal PlanningCostUsd, double Seconds,
+    AcceptanceGrade? Acceptance = null);
 
 public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, IReadOnlyList<ImplementRun> Results);
 
@@ -41,7 +49,7 @@ public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, I
 /// harness stands in for the human), and implemented and verified with the fix loop. Then the maintainers' tests are
 /// applied over the result and run: Foreman's own gate saying "verified" is a claim, the hidden tests are the check.
 /// </summary>
-public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOptions options, Action<string>? log = null, bool keepSpec = false)
+public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOptions options, Action<string>? log = null, bool keepSpec = false, AcceptanceOptions? acceptance = null)
 {
     public static IReadOnlyList<ImplementCase> ReadCases(string path) =>
         JsonSerializer.Deserialize<List<ImplementCase>>(File.ReadAllText(path), LocalizationEval.CaseJson) ?? [];
@@ -90,25 +98,49 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
 
         Ready.Mark(job);
         job.Event("eval", "ready-by-harness", new { reason = "the implement eval stands in for the human" });
+        if (acceptance is not null)
+            await new Pipeline([new AcceptanceStage(driver, acceptance, Log)]).RunAsync(job, new HashSet<string> { "accept" }, Log, ct);
+        else Dirs.Delete(Path.Combine(job.Dir, "acceptance"));
         await new Pipeline([new ImplementStage(driver, options, Log)]).RunAsync(job, new HashSet<string> { "implement" }, Log, ct);
 
         var report = File.Exists(Path.Combine(job.Dir, "implement", "implement.json")) ? job.ReadJson<ImplementReport>("implement", "implement.json") : null;
         var verify = File.Exists(Path.Combine(job.Dir, "verify", "verify.json")) ? job.ReadJson<VerifyReport>("verify", "verify.json") : null;
         var patchFile = Path.Combine(job.Dir, "implement", "patch.diff");
         HiddenGrade? hidden = null;
+        AcceptanceGrade? accepted = null;
         try
         {
             var tests = await FetchHiddenAsync(c, ct);
             hidden = await GradeAsync(job, tests, File.Exists(patchFile) ? File.ReadAllText(patchFile) : null, ct);
+            if (acceptance is not null) accepted = await GradeAcceptanceAsync(job, tests, ct);
         }
         catch (InvalidOperationException e)
         {
-            hidden = new HiddenGrade(false, 0, [], 0, [], e.Message);
+            hidden ??= new HiddenGrade(false, 0, [], 0, [], e.Message);
+            if (acceptance is not null) accepted ??= new AcceptanceGrade("error", 0, 0, null, null, [], 0, e.Message);
         }
         job.WriteJson("eval", "hidden.json", hidden);
+        if (accepted is not null) job.WriteJson("eval", "acceptance.json", accepted);
         return new ImplementRun(c.Id, c.Language, report?.Status == "verified" ? null : "implement", report?.Status ?? "no_report", report?.Reason, report?.Rounds.Count ?? 0,
             report?.Status == "verified", verify?.Review?.Verdict, hidden, verify?.FilesChanged ?? 0, verify?.LinesAdded ?? 0, verify?.LinesRemoved ?? 0,
-            report?.CostUsd ?? 0, planningCost, Math.Round(clock.Elapsed.TotalSeconds, 1));
+            report?.CostUsd ?? 0, planningCost, Math.Round(clock.Elapsed.TotalSeconds, 1), accepted);
+    }
+
+    /// <summary>Foreman's hidden tests on the maintainers' fix: the base commit, their code change, our acceptance tests.</summary>
+    private async Task<AcceptanceGrade> GradeAcceptanceAsync(Job job, HiddenTests hidden, CancellationToken ct)
+    {
+        var file = AcceptanceTools.ResultFile(job);
+        var cost = File.Exists(Path.Combine(job.Dir, "acceptance", "summary.json"))
+            ? JsonDocument.Parse(File.ReadAllText(Path.Combine(job.Dir, "acceptance", "summary.json"))).RootElement.TryGetProperty("agent", out var a) && a.TryGetProperty("costUsd", out var c) ? c.GetDecimal() : 0
+            : 0;
+        if (!File.Exists(file)) return new AcceptanceGrade("none", 0, 0, null, null, [], cost, "the accept stage wrote nothing");
+        var report = Json.Read<AcceptanceReport>(File.ReadAllText(file))!;
+        var failOnBase = report.Tests.Count(t => t.OnBase != "passed");
+        if (AcceptanceStage.Hidden(job) is not { } set) return new AcceptanceGrade(report.Status, report.Tests.Count, failOnBase, report.MutationScore, null, [], cost, report.Reason);
+        var env = TestEnvironment.Of(job);
+        var onGold = await RunWithAsync(job, env, [hidden.GoldPatch, set.Diff], [], Path.Combine(job.StageDir("eval"), "acceptance-gold"), ct);
+        var failing = report.Tests.Where(t => onGold.GetValueOrDefault(t.Id, TestStatus.Failed) != TestStatus.Passed).Select(t => $"{t.Id} ({t.Requirement})").ToList();
+        return new AcceptanceGrade(report.Status, report.Tests.Count, failOnBase, report.MutationScore, report.Tests.Count - failing.Count, failing, cost);
     }
 
     private static decimal PlanningCost(Job job)
@@ -237,9 +269,25 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
         sb.Append($"Resolved {graded.Count(x => x.Hidden!.Resolved)}/{graded.Count} graded; verified by the gate {r.Results.Count(x => x.Verified)}/{r.Results.Count}; ");
         sb.Append($"verified and resolved {graded.Count(x => x.Verified && x.Hidden!.Resolved)}, verified but not resolved {graded.Count(x => x.Verified && !x.Hidden!.Resolved)}, not verified but resolved {graded.Count(x => !x.Verified && x.Hidden!.Resolved)}. ");
         sb.Append($"Implementing and reviewing cost {r.Results.Sum(x => x.ImplementCostUsd):0.00} USD, planning (environment agent, spec) {r.Results.Sum(x => x.PlanningCostUsd):0.00} USD (list-price estimates; the runs were on a subscription).\n\n");
-        sb.Append("| Case | Language | Gate | Rounds | Review | Hidden tests | Change | Cost | Time |\n|---|---|---|---|---|---|---|---|---|\n");
+        var acc = r.Results.Where(x => x.Acceptance is not null).ToList();
+        if (acc.Count > 0)
+        {
+            var onGold = acc.Where(x => x.Acceptance!.PassOnGold is not null).ToList();
+            sb.Append($"**Foreman's own hidden acceptance tests** (written from the PRP by a separate session, tested by code on the base commit, a reference fix and its mutants): written for {acc.Count(x => x.Acceptance!.Status == "ready")}/{acc.Count} cases; ");
+            sb.Append($"{onGold.Sum(x => x.Acceptance!.PassOnGold)} of {onGold.Sum(x => x.Acceptance!.Tests)} pass on the maintainers' fix, all of them in {onGold.Count(x => x.Acceptance!.FailingOnGold.Count == 0)}/{onGold.Count} cases; ");
+            sb.Append($"writing them cost {acc.Sum(x => x.Acceptance!.CostUsd):0.00} USD.\n\n");
+        }
+        sb.Append(acc.Count > 0
+            ? "| Case | Language | Gate | Rounds | Review | Hidden tests | Acceptance tests | Change | Cost | Time |\n|---|---|---|---|---|---|---|---|---|---|\n"
+            : "| Case | Language | Gate | Rounds | Review | Hidden tests | Change | Cost | Time |\n|---|---|---|---|---|---|---|---|---|\n");
         foreach (var x in r.Results)
         {
+            var accepted = x.Acceptance switch
+            {
+                null => "",
+                { Status: not "ready" } a => $"{a.Status.Replace('_', ' ')}{(a.Error is null ? "" : $": {Short(a.Error, 80)}")}",
+                var a => $"{a.Tests} tests, {a.FailOnBase} fail before; mutants {(a.MutationScore is { } m ? $"{m:P0} killed" : "n/a")}{(a.PassOnGold is { } g ? $"; {g}/{a.Tests} pass on the maintainers' fix" : "")}",
+            };
             var hidden = x.Hidden switch
             {
                 null => "not run",
@@ -247,7 +295,7 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
                 { Resolved: true } h => $"**resolved** ({h.FailToPass} fail-to-pass, {h.PassToPass} pass-to-pass)",
                 var h => $"not resolved: {h.FailToPassFailing.Count}/{h.FailToPass} fail-to-pass failing, {h.PassToPassBroken.Count}/{h.PassToPass} pass-to-pass broken",
             };
-            sb.Append($"| {x.Id} | {x.Language} | {(x.Verified ? "verified" : x.Status.Replace('_', ' '))} | {x.Rounds} | {x.ReviewVerdict?.Replace('_', ' ') ?? ""} | {hidden} | {(x.FilesChanged == 0 ? "" : $"{x.FilesChanged} files +{x.LinesAdded} −{x.LinesRemoved}")} | ${x.ImplementCostUsd:0.00} | {x.Seconds / 60:0} min |\n");
+            sb.Append($"| {x.Id} | {x.Language} | {(x.Verified ? "verified" : x.Status.Replace('_', ' '))} | {x.Rounds} | {x.ReviewVerdict?.Replace('_', ' ') ?? ""} | {hidden} |{(acc.Count > 0 ? $" {accepted} |" : "")} {(x.FilesChanged == 0 ? "" : $"{x.FilesChanged} files +{x.LinesAdded} −{x.LinesRemoved}")} | ${x.ImplementCostUsd:0.00} | {x.Seconds / 60:0} min |\n");
         }
         var notes = r.Results.Where(x => x.Reason is not null).ToList();
         if (notes.Count > 0)

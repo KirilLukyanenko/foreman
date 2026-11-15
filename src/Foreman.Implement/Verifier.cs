@@ -30,6 +30,9 @@ public sealed record LintResult(string Command, string Source, string Before, st
 /// <summary>A secret gitleaks found on a line the change adds. The value is never stored.</summary>
 public sealed record SecretHit(string Rule, string Path, int Line);
 
+/// <summary>The hidden acceptance tests on the change: each must pass. <paramref name="Failing"/> names the test and its requirement.</summary>
+public sealed record HiddenResult(int Tests, IReadOnlyList<string> Passing, IReadOnlyList<string> Failing);
+
 /// <summary><c>verify/round-N/verify.json</c>: everything the orchestrator checked, and whether the change passes.</summary>
 public sealed record VerifyReport(
     int Round,
@@ -44,7 +47,8 @@ public sealed record VerifyReport(
     int FilesChanged,
     int LinesAdded,
     int LinesRemoved,
-    double Seconds);
+    double Seconds,
+    HiddenResult? Hidden = null);
 
 /// <summary>
 /// Stage 6, run by the orchestrator and never by the agent, on fresh copies of the baseline volume with only the
@@ -76,6 +80,8 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
         if (changes.Count == 0) blockers.Add("the patch is empty");
 
         var lintCommands = SpecStage.Validation(job).Where(v => !v.Verified).Take(MaxLintCommands).ToList();
+        var acceptance = AcceptanceStage.Hidden(job);
+        HiddenResult? hidden = null;
         TestDelta? tests = null;
         ReproCheck? repro = null;
         var lint = new List<LintResult>();
@@ -112,6 +118,17 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
                     {
                         var r = await ws.BashAsync(LintScript(env, c.Command), LintTimeout, ct);
                         lint.Add(new LintResult(c.Command, c.Source, "?", r.TimedOut ? "timeout" : r.Ok ? "pass" : "fail", r.Ok ? null : Last(r.Tail(15))));
+                    }
+
+                    // The hidden acceptance tests, in their own run so that tests which don't compile against the change
+                    // can't hide among the pass-to-pass results. The implementer learns which failed, never their code.
+                    if (acceptance is { } a)
+                    {
+                        log?.Invoke($"  verify: {a.Report.Tests.Count} hidden acceptance test(s)");
+                        hidden = await HiddenAsync(ws, a.Diff, a.Report, Path.Combine(dir, "tests-hidden"), ct);
+                        if (hidden.Failing.Count > 0)
+                            blockers.Add($"hidden acceptance tests: {hidden.Failing.Count} of {hidden.Tests} fail with the change: {string.Join("; ", hidden.Failing.Take(10))}" +
+                                         (hidden.Passing.Count == 0 ? ". None ran: they call the public interface exactly as PRP section 3.1 names it, so check the names and signatures" : ""));
                     }
                 }
             }
@@ -160,17 +177,32 @@ public sealed class Verifier(IAgentDriver? reviewer, ReviewOptions? reviewOption
         ReviewReport? review = null;
         if (blockers.Count == 0 && reviewer is not null)
         {
-            var facts = new VerifyReport(round, true, [], guard, tests, repro, lint, secrets, null, changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), 0);
+            var facts = new VerifyReport(round, true, [], guard, tests, repro, lint, secrets, null, changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), 0, hidden);
             review = await new Reviewer(reviewer, reviewOptions ?? new ReviewOptions(), log).RunAsync(job, round, patch, facts, submission, ct);
             blockers.AddRange(review.Blocking());
         }
 
         var report = new VerifyReport(round, blockers.Count == 0, blockers, guard, tests, repro, lint, secrets, review,
-            changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), Math.Round(clock.Elapsed.TotalSeconds, 1));
+            changes.Count, changes.Sum(c => c.Added.Count), changes.Sum(c => c.Removed.Count), Math.Round(clock.Elapsed.TotalSeconds, 1), hidden);
         job.WriteJson("verify", ImplementTools.RoundDir(round) + "/verify.json", report);
         job.WriteJson("verify", "verify.json", report);
-        job.Event("verify", "verified", new { round, report.Passed, blockers = blockers.Count, regressions = tests?.Regressions.Count, reproducing = repro?.Reproducing.Count, review = review?.Verdict });
+        job.Event("verify", "verified", new { round, report.Passed, blockers = blockers.Count, regressions = tests?.Regressions.Count, reproducing = repro?.Reproducing.Count, hiddenFailing = hidden?.Failing.Count, review = review?.Verdict });
         return report;
+    }
+
+    /// <summary>Adds the hidden tests to the copy with the change, runs the suite, takes them out again.</summary>
+    private static async Task<HiddenResult> HiddenAsync(Workspace ws, string diff, AcceptanceReport report, string hostDir, CancellationToken ct)
+    {
+        var label = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var t in report.Tests) label[t.Id] = $"{t.Id} ({t.Requirement})";
+        if (await ws.ApplyAsync(diff, ct: ct) is not null)
+            return new HiddenResult(report.Tests.Count, [], ["the hidden test files can't be added next to the change (a file with the same name?)"]);
+        var run = await ws.RunTestsAsync(hostDir, ct);
+        await ws.BashAsync("rm -f " + string.Join(' ', report.TestFiles.Select(Workspace.Quote)), TimeSpan.FromMinutes(1), ct);
+        var outcome = run.Outcomes.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First().Status, StringComparer.Ordinal);
+        var passing = report.Tests.Where(t => outcome.GetValueOrDefault(t.Id, Recon.Reports.TestStatus.Failed) == Recon.Reports.TestStatus.Passed).Select(t => t.Id).ToList();
+        var failing = report.Tests.Where(t => !passing.Contains(t.Id)).Select(t => label[t.Id] + (outcome.ContainsKey(t.Id) ? "" : ", didn't run")).ToList();
+        return new HiddenResult(report.Tests.Count, passing, failing);
     }
 
     /// <summary>A CI lint command, run the way the test script runs: its environment lines (a virtualenv) first.</summary>

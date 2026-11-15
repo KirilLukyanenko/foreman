@@ -83,6 +83,28 @@ public static partial class Patch
         return files;
     }
 
+    /// <summary>The part of a diff that touches the files <paramref name="keep"/> accepts, as a diff of its own.</summary>
+    public static string Select(string diff, Func<string, bool> keep)
+    {
+        var sb = new StringBuilder();
+        var block = new StringBuilder();
+        void Flush()
+        {
+            if (block.Length == 0) return;
+            var text = block.ToString();
+            if (Parse(text) is [var file, ..] && keep(file.Path)) sb.Append(text);
+            block.Clear();
+        }
+        foreach (var line in diff.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (line.StartsWith("diff --git ", StringComparison.Ordinal)) Flush();
+            if (block.Length > 0 || line.StartsWith("diff --git ", StringComparison.Ordinal)) block.Append(line).Append('\n');
+        }
+        Flush();
+        var result = sb.ToString();
+        return result.EndsWith("\n\n", StringComparison.Ordinal) ? result[..^1] : result;
+    }
+
     /// <summary>The paths of a change, in diff order.</summary>
     public static IReadOnlyList<string> Paths(string diff) => Parse(diff).Select(f => f.Path).ToList();
 

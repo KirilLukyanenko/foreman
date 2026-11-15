@@ -10,6 +10,7 @@ using Foreman.Recon.Baseline;
 using Foreman.Recon.CodeMap;
 using Foreman.Recon.Environment;
 using Foreman.Recon.Triage;
+using Foreman.Recon.Workspaces;
 
 namespace Foreman.Planning.Spec;
 
@@ -59,12 +60,12 @@ public sealed partial class SpecStage(IAgentDriver? driver, SpecOptions? options
             MaxBudgetUsd: _options.MaxBudgetUsd,
             ReadOutcome: () => File.Exists(SpecTools.ResultFile(job)) ? "submitted" : null,
             // Claude Code ends the MCP server without a graceful shutdown: the lab is removed here.
-            Cleanup: () => SpecLab.RemoveAsync(job));
+            Cleanup: () => Lab.RemoveAsync(job, Lab.SpecSuffix));
 
         log?.Invoke($"  spec: {driver.Name}, {_options.Model}");
         AgentRunSummary summary;
         try { summary = await driver.RunAsync(request, ct); }
-        finally { await SpecLab.RemoveAsync(job); }
+        finally { await Lab.RemoveAsync(job, Lab.SpecSuffix); }
         job.Event(Name, "agent", new { summary });
         if (!File.Exists(SpecTools.ResultFile(job)))
             throw new InvalidOperationException($"the spec writer delivered nothing: {summary.Outcome}{(summary.Error is null ? "" : $" ({summary.Error})")}");

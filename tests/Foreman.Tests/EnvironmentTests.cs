@@ -101,7 +101,7 @@ public class EnvironmentToolsDockerTests
     [Fact]
     public async Task Run_then_failed_submit_then_accepted_submit()
     {
-        if (!await DockerAvailable()) Assert.Skip("Docker is not running");
+        if (!await DockerCheck.AvailableAsync()) Assert.Skip("Docker is not running");
 
         using var repo = new TempRepo(
             ("calc.py", "def add(a, b):\n    return a + b\n"),
@@ -145,6 +145,4 @@ public class EnvironmentToolsDockerTests
         Assert.True(after.IsError);
     }
 
-    private static async Task<bool> DockerAvailable() =>
-        (await Proc.RunAsync("docker", ["info", "--format", "{{.ServerVersion}}"], timeout: TimeSpan.FromSeconds(20))).Ok;
 }

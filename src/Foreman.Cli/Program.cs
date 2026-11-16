@@ -41,6 +41,8 @@ switch (args.FirstOrDefault())
         return MarkReady(args.ElementAtOrDefault(1));
     case "serve":
         return await Serve();
+    case "gc":
+        return await Gc();
     case "verify":
         return await Verify(args.ElementAtOrDefault(1));
     case "eval":
@@ -65,6 +67,7 @@ switch (args.FirstOrDefault())
               foreman verify <job id> [--round n] [--candidate k] [--no-review]   verify implement/patch.diff again
               foreman show <job id>
               foreman serve [--urls http://127.0.0.1:8095] [--workers 1] [--allow-local-repos]   jobs over HTTP for Tower; needs FOREMAN_TOKEN
+              foreman gc [--older-than-days 14] [--dry-run]   remove idle jobs' Docker volumes and images (the job folders stay)
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
@@ -133,9 +136,23 @@ async Task<int> Serve()
         Go: meta.Go,
         Acceptance: meta.Acceptance ? new AcceptanceOptions() : null,
         Implement: new ImplementOptions())), workers);
-    var app = ForemanServer.Build(new ServerOptions(home, token, urls, args.Contains("--allow-local-repos")), runner, runner);
+    var gcDays = int.TryParse(Environment.GetEnvironmentVariable("FOREMAN_GC_DAYS"), out var d) ? d : 14;
+    var app = ForemanServer.Build(new ServerOptions(home, token, urls, args.Contains("--allow-local-repos")), runner, runner,
+        new JanitorService(home, runner, gcDays, line => Console.WriteLine(line)));
     Console.WriteLine($"foreman serve on {urls}, {workers} worker(s), jobs in {Path.Combine(home, "jobs")}, agents on {driver.Name}");
     await app.RunAsync();
+    return 0;
+}
+
+async Task<int> Gc()
+{
+    var days = int.TryParse(Arg("--older-than-days"), out var n) && n >= 0 ? n : 14;
+    var dry = args.Contains("--dry-run");
+    var r = await Janitor.RunAsync(home, TimeSpan.FromDays(days), dry, ct: cts.Token);
+    Console.WriteLine($"{(dry ? "would remove" : "removed")}: {r.Volumes.Count} volume(s), {r.Images.Count} image(s), {r.Containers.Count} container(s)" +
+                      $" of {r.Jobs.Count} job(s) idle for {days}+ days, and {r.Orphans.Count} leftover(s) of jobs that no longer exist");
+    foreach (var j in r.Jobs) Console.WriteLine($"  job {j}: environment and baseline will be set up again if it runs");
+    if (dry) foreach (var x in r.Volumes.Concat(r.Images).Concat(r.Containers)) Console.WriteLine($"  {x}");
     return 0;
 }
 

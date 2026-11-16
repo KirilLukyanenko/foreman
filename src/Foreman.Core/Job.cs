@@ -103,6 +103,16 @@ public sealed class Job
         }
     }
 
+    /// <summary>Forgets a stage's state, so the next run does it again (its outputs were removed).</summary>
+    public void ClearState(string stage)
+    {
+        lock (_lock)
+        {
+            var all = ReadState();
+            if (all.Remove(stage)) WriteAtomic(Path.Combine(Dir, "state.json"), Json.Write(all));
+        }
+    }
+
     // ---- artifacts ----
 
     public string WriteJson<T>(string stage, string file, T value)

@@ -45,7 +45,7 @@ public class ImplementDockerTests
     [Fact]
     public async Task Tools_then_submit_then_the_verifier_passes_the_fix()
     {
-        if (!(await Proc.RunAsync("docker", ["info", "--format", "{{.ServerVersion}}"], timeout: TimeSpan.FromSeconds(20), ct: TestContext.Current.CancellationToken)).Ok) Assert.Skip("Docker is not running");
+        if (!await DockerCheck.AvailableAsync()) Assert.Skip("Docker is not running");
         var ct = TestContext.Current.CancellationToken;
 
         using var repo = new TempRepo(

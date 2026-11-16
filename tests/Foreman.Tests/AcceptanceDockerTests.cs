@@ -22,7 +22,7 @@ public class AcceptanceDockerTests
     [Fact]
     public async Task Weak_tests_are_sent_back_strong_ones_kill_the_mutant_and_verify_runs_them()
     {
-        if (!(await Proc.RunAsync("docker", ["info", "--format", "{{.ServerVersion}}"], timeout: TimeSpan.FromSeconds(20), ct: TestContext.Current.CancellationToken)).Ok) Assert.Skip("Docker is not running");
+        if (!await DockerCheck.AvailableAsync()) Assert.Skip("Docker is not running");
         var ct = TestContext.Current.CancellationToken;
 
         using var repo = new TempRepo(

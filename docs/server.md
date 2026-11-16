@@ -39,10 +39,30 @@ Nothing is pushed to the client's repository or sent to anyone: the human takes 
 
 ## On a server
 
-A Linux VM of its own, not one that holds other secrets (Foreman runs client code, sandboxed): Ubuntu 24.04, 4–8 vCPU,
-16 GB RAM, 150–200 GB disk. Docker, the .NET 10 runtime, git, gh (read-only), Claude Code. Foreman runs as its own
-user under systemd (`deploy/foreman.service`), listens on localhost or the Tailscale address only, and is reached
-through Tailscale; no port is open to the internet except SSH with a key. The token, the model credential and any
-GitHub token go in `/etc/foreman/foreman.env` (mode 0600), never in the repository.
+A Linux VM of its own, not one that holds other secrets (Foreman runs client code, sandboxed, and the `foreman` user
+is in the docker group, which is root-equivalent): Ubuntu 24.04, 4–8 vCPU, 16 GB RAM, 150–200 GB disk.
 
-Not yet done: running it on Linux (it has run on Windows only), cleaning up old jobs' images and volumes, Tower's side.
+1. On the laptop, `.\deploy\publish.ps1` builds `artifacts/foreman-linux-x64.tar.gz` (about 55 MB): Foreman
+   self-contained for linux-x64 (no .NET on the server), `install.sh` and the systemd unit.
+2. On the server, `tar -xzf foreman-linux-x64.tar.gz && sudo bash foreman-linux-x64/install.sh`. It installs Docker
+   Engine from Docker's repository, creates the `foreman` user (home `/var/lib/foreman`, jobs in
+   `/var/lib/foreman/home`), puts Foreman in `/opt/foreman`, installs Claude Code for that user, writes
+   `/etc/foreman/foreman.env` (mode 600) with a new random `FOREMAN_TOKEN`, and enables the unit. It opens no port
+   and writes no model credential. Running it again upgrades Foreman and keeps the jobs, the settings and the sign-in.
+3. By hand: the model credential (`claude setup-token` on your own computer, the token into
+   `CLAUDE_CODE_OAUTH_TOKEN`; or `ANTHROPIC_API_KEY`), Tailscale (`FOREMAN_URLS` to the machine's Tailscale address
+   if Tower runs elsewhere, never a public address), then `sudo systemctl restart foreman`.
+
+Tried on a clean Ubuntu 24.04 container with systemd stubbed: the install, the layout, Claude Code, the settings
+file and the upgrade. The whole test suite passes on Linux, the Docker tests included (against a separate Docker
+daemon).
+
+## Disk
+
+Each job keeps a volume with its set-up repository and an image of its environment, often gigabytes.
+`foreman serve` removes them once a day for jobs idle longer than `FOREMAN_GC_DAYS` (14; 0 turns it off), and
+anything named after a job that no longer exists. The job folders stay, and a cleaned job's environment and baseline
+are set up again if it runs. `foreman gc [--older-than-days 14] [--dry-run]` does the same by hand. Shared volumes
+and images (the OSV database, the tool images) are never touched.
+
+Not yet done: Tower itself on the server.

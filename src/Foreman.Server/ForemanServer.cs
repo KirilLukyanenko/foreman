@@ -47,7 +47,7 @@ public static class ForemanServer
         ["serve.log"] = "serve.log",
     };
 
-    public static WebApplication Build(ServerOptions o, IJobRunner runner, IHostedService? worker = null)
+    public static WebApplication Build(ServerOptions o, IJobRunner runner, IHostedService? worker = null, IHostedService? janitor = null)
     {
         if (o.Token.Length < 24) throw new InvalidOperationException("FOREMAN_TOKEN must be set to a random secret of at least 24 characters");
         var builder = WebApplication.CreateSlimBuilder();
@@ -55,6 +55,7 @@ public static class ForemanServer
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Services.AddSingleton(runner);
         if (worker is not null) builder.Services.AddSingleton(worker);
+        if (janitor is not null) builder.Services.AddSingleton(janitor);
         builder.Services.ConfigureHttpJsonOptions(j =>
         {
             j.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;

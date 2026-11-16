@@ -272,3 +272,27 @@ public sealed class JobRunnerTests : IDisposable
         await again.StopAsync(ct);
     }
 }
+
+public class JanitorTests
+{
+    [Theory]
+    [InlineData("foreman-20261116-160558-shop", "20261116-160558-shop")]
+    [InlineData("foreman-20261116-160558-shop-impl", "20261116-160558-shop")]
+    [InlineData("foreman-20261116-160558-shop-2", "20261116-160558-shop-2")]
+    [InlineData("foreman-20261116-160558-shop-2-verify-c1-1", "20261116-160558-shop-2")]
+    [InlineData("foreman-20261116-160558-other", null)]
+    [InlineData("postgres-data", null)]
+    public void A_name_belongs_to_the_longest_job_id_it_starts_with(string name, string? owner) =>
+        Assert.Equal(owner, Janitor.Owner(name, ["20261116-160558-shop", "20261116-160558-shop-2"]));
+}
+
+public class JanitorSharedTests
+{
+    [Theory]
+    [InlineData("foreman-osv-db", false)]
+    [InlineData("foreman-tools", false)]
+    [InlineData("foreman-20261116-160558-shop-impl", true)]
+    [InlineData("foreman-eval-unjs-defu-119", true)]
+    [InlineData("foreman-redteam-rules-curl-spec-lab", true)]
+    public void Only_names_shaped_like_job_ids_can_be_leftovers(string name, bool job) => Assert.Equal(job, Janitor.LooksLikeJob(name));
+}

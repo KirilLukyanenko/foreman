@@ -70,6 +70,8 @@ dotnet run --project src/Foreman.Cli -- eval compare a.json b.json              
 dotnet run --project src/Foreman.Cli -- eval redteam                                      # prompt injection planted in a repository
 ```
 
+As a service for Tower (jobs over HTTP, waits for the human's answers and approval, resumes): `foreman serve`, see [docs/server.md](docs/server.md).
+
 Jobs are stored in `%LOCALAPPDATA%/Foreman/jobs` (or `$FOREMAN_HOME/jobs`).
 
 ## Sandbox

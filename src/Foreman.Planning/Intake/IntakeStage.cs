@@ -116,7 +116,7 @@ public sealed class GoStage(bool overrideNoGo, Action<string>? log = null) : ISt
         var stop = fit.Verdict == "no_go" && !overrideNoGo;
         job.WriteJson(Name, "go.json", new GoDecision(fit.Verdict, fit.Risk, fit.Reasons, fit.Verdict == "no_go" && overrideNoGo));
         if (stop)
-            throw new InvalidOperationException($"intake says no-go ({fit.Risk} risk): {string.Join("; ", fit.Reasons)}. Rerun with --go to continue anyway.");
+            throw new JobWaitingException("go", $"intake says no-go ({fit.Risk} risk): {string.Join("; ", fit.Reasons)}. Rerun with --go to continue anyway.");
         if (fit.Verdict != "go")
             log?.Invoke($"  {fit.Verdict.Replace('_', '-')}{(overrideNoGo && fit.Verdict == "no_go" ? " (overridden with --go)" : "")}: {string.Join("; ", fit.Reasons)}");
         return Task.CompletedTask;

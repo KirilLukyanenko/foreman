@@ -40,6 +40,13 @@ public sealed class Pipeline(IReadOnlyList<IStage> stages)
                 job.Event(stage.Name, "finished", new { seconds = Math.Round(clock.Elapsed.TotalSeconds, 1) });
                 log?.Invoke($"{stage.Name}: done in {clock.Elapsed.TotalSeconds:0.0} s");
             }
+            catch (JobWaitingException w)
+            {
+                job.SetState(stage.Name, new StageState(StageStatus.Waiting, started, DateTime.UtcNow, w.Message));
+                job.Event(stage.Name, "waiting", new { @for = w.For, reason = w.Message });
+                log?.Invoke($"{stage.Name}: WAITING for {w.For}: {w.Message}");
+                return false;
+            }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 job.SetState(stage.Name, new StageState(StageStatus.Failed, started, DateTime.UtcNow, e.Message));

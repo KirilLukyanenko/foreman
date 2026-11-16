@@ -27,7 +27,7 @@ public sealed class AcceptanceStage(IAgentDriver? driver, AcceptanceOptions? opt
 
     public async Task RunAsync(Job job, CancellationToken ct)
     {
-        if (Ready.Check(job) is { } notReady) throw new InvalidOperationException(notReady);
+        if (Ready.Check(job) is { } notReady) throw new JobWaitingException("ready", notReady);
         var prp = job.ReadJson<Prp>("spec", "prp.json");
         var dir = Path.Combine(job.Dir, "acceptance");
         Dirs.Delete(dir);

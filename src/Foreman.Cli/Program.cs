@@ -12,6 +12,8 @@ using Foreman.Recon.Dossier;
 using Foreman.Recon.Security;
 using Foreman.Recon.Environment;
 using Foreman.Recon.Triage;
+using Foreman.Sandbox;
+using Foreman.Server;
 
 // foreman recon <repo path or git url> [--task file.md] [--ref branch | --commit sha] [--stages a,b] [--runs 3] [--agent auto|claude-code|api|none]
 //               [--model id] [--effort low|medium|high] [--budget usd] [--home dir]
@@ -37,6 +39,8 @@ switch (args.FirstOrDefault())
         return Answer(args.ElementAtOrDefault(1));
     case "ready":
         return MarkReady(args.ElementAtOrDefault(1));
+    case "serve":
+        return await Serve();
     case "verify":
         return await Verify(args.ElementAtOrDefault(1));
     case "eval":
@@ -60,6 +64,7 @@ switch (args.FirstOrDefault())
               foreman ready <job id>                      mark the PRP (spec/prp.md) as reviewed and approved
               foreman verify <job id> [--round n] [--candidate k] [--no-review]   verify implement/patch.diff again
               foreman show <job id>
+              foreman serve [--urls http://127.0.0.1:8095] [--workers 1] [--allow-local-repos]   jobs over HTTP for Tower; needs FOREMAN_TOKEN
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
@@ -96,29 +101,17 @@ async Task<int> Recon()
 
     var force = Arg("--force")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
     var hasTask = job.Manifest.TaskFile is not null;
-    IStage[] stages =
-    [
-        // Intake and the go/no-go gate need no repository: they run first, before recon spends anything.
-        .. hasTask ? new IStage[] { new IntakeStage(driver, new IntakeOptions(Arg("--intake-model") ?? IntakeOptions.DefaultModel), Console.WriteLine), new GoStage(args.Contains("--go"), Console.WriteLine) } : [],
-        new FetchStage(options),
-        new TriageStage(),
-        new SecurityStage(options.Limits, Console.WriteLine),
-        new CodeMapStage(null, options.Limits),
-        new EnvironmentStage(options, driver, Console.WriteLine, Arg("--model")),
-        new BaselineStage(options, Console.WriteLine),
-        new DossierStage(driver, new DossierOptions(Arg("--reader-model") ?? DossierOptions.DefaultModel,
-            Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries)), Console.WriteLine),
-        .. hasTask ? TaskStages() : [],
-    ];
-    IStage[] TaskStages() =>
-    [
-        new ClarifyStage(driver, new ClarifyOptions(Arg("--clarify-model") ?? ClarifyOptions.DefaultModel), Console.WriteLine),
-        // Waits (fails with the reason) until the client's answers are recorded; rerun the job after 'foreman answer'.
-        new SpecStage(driver, new SpecOptions(Arg("--spec-model") ?? SpecOptions.DefaultModel), Console.WriteLine),
-        // Waits (fails with the reason) until the human marks the PRP Ready with 'foreman ready'.
-        .. args.Contains("--no-acceptance") ? Array.Empty<IStage>() : [new AcceptanceStage(driver, AcceptanceOptionsFromArgs(), Console.WriteLine)],
-        new ImplementStage(driver, ImplementOptionsFromArgs(), Console.WriteLine),
-    ];
+    var stages = JobPipeline.Stages(driver, hasTask, new JobPipelineOptions(
+        options,
+        EnvironmentModel: Arg("--model"),
+        ReaderModel: Arg("--reader-model") ?? DossierOptions.DefaultModel,
+        Sections: Arg("--sections")?.Split(',', StringSplitOptions.RemoveEmptyEntries),
+        IntakeModel: Arg("--intake-model") ?? IntakeOptions.DefaultModel,
+        ClarifyModel: Arg("--clarify-model") ?? ClarifyOptions.DefaultModel,
+        SpecModel: Arg("--spec-model") ?? SpecOptions.DefaultModel,
+        Go: args.Contains("--go"),
+        Acceptance: args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs(),
+        Implement: ImplementOptionsFromArgs()), Console.WriteLine);
     // --stages runs only the named stages (their inputs must exist), e.g. fetch,triage,codemap for an evaluation.
     if (Arg("--stages")?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal) is { } only)
         stages = stages.Where(s => only.Contains(s.Name)).ToArray();
@@ -126,6 +119,24 @@ async Task<int> Recon()
     var ok = await pipeline.RunAsync(job, force, Console.WriteLine, cts.Token);
     Show(job.Id);
     return ok ? 0 : 1;
+}
+
+async Task<int> Serve()
+{
+    var token = Environment.GetEnvironmentVariable("FOREMAN_TOKEN") ?? "";
+    var urls = Arg("--urls") ?? Environment.GetEnvironmentVariable("FOREMAN_URLS") ?? "http://127.0.0.1:8095";
+    var workers = int.TryParse(Arg("--workers"), out var w) && w > 0 ? w : 1;
+    var driver = Driver() ?? throw new InvalidOperationException("serve needs a model: Claude Code signed in (or CLAUDE_CODE_OAUTH_TOKEN), or ANTHROPIC_API_KEY");
+    await DockerSandbox.EnsureDockerAsync();
+    var runner = new JobRunner(home, (job, meta) => JobPipeline.Stages(driver, job.Manifest.TaskFile is not null, new JobPipelineOptions(
+        new ReconOptions(Ref: meta.Ref, Commit: meta.Commit),
+        Go: meta.Go,
+        Acceptance: meta.Acceptance ? new AcceptanceOptions() : null,
+        Implement: new ImplementOptions())), workers);
+    var app = ForemanServer.Build(new ServerOptions(home, token, urls, args.Contains("--allow-local-repos")), runner, runner);
+    Console.WriteLine($"foreman serve on {urls}, {workers} worker(s), jobs in {Path.Combine(home, "jobs")}, agents on {driver.Name}");
+    await app.RunAsync();
+    return 0;
 }
 
 async Task<int> Eval()

@@ -177,8 +177,9 @@ public sealed class PlanningTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
         _job.WriteJson("intake", "brief.json", Brief(verdict: "no_go"));
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => new GoStage(false).RunAsync(_job, ct));
+        var e = await Assert.ThrowsAsync<JobWaitingException>(() => new GoStage(false).RunAsync(_job, ct));
         Assert.Contains("--go", e.Message);
+        Assert.Equal("go", e.For);
         await new GoStage(true).RunAsync(_job, ct);
         Assert.True(_job.ReadJson<GoDecision>("go", "go.json").Overridden);
     }

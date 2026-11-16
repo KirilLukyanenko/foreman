@@ -7,6 +7,7 @@
     <Project Path="src/Foreman.Implement/Foreman.Implement.csproj" />
     <Project Path="src/Foreman.Agents/Foreman.Agents.csproj" />
     <Project Path="src/Foreman.Evals/Foreman.Evals.csproj" />
+    <Project Path="src/Foreman.Server/Foreman.Server.csproj" />
     <Project Path="src/Foreman.Cli/Foreman.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

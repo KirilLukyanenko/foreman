@@ -93,7 +93,7 @@ public sealed partial class SpecStage(IAgentDriver? driver, SpecOptions? options
         var asked = gaps.Count(g => g.Resolution == "ask");
         if (asked == 0) return [];
         if (!File.Exists(Path.Combine(job.Dir, "clarify", "answers.json")))
-            throw new InvalidOperationException($"waiting for the client: {asked} questions in clarify/questions.md have no answers. Send them, then run 'foreman answer {job.Id} --set Q1=\"...\"' (or --defaults) and run the job again");
+            throw new JobWaitingException("answers", $"waiting for the client: {asked} questions in clarify/questions.md have no answers. Send them, then run 'foreman answer {job.Id} --set Q1=\"...\"' (or --defaults) and run the job again");
         return job.ReadJson<List<Answer>>("clarify", "answers.json");
     }
 

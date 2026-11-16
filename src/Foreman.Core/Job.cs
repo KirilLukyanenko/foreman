@@ -3,7 +3,15 @@ using System.Text.Json;
 
 namespace Foreman.Core;
 
-public enum StageStatus { Pending, Running, Done, Failed }
+/// <param name="Waiting">The stage can't go on until a human acts (the client's answers, the PRP marked Ready, a no-go
+/// overridden); <see cref="StageState.Error"/> says what. Running the job again resumes it.</param>
+public enum StageStatus { Pending, Running, Done, Failed, Waiting }
+
+/// <summary>A stage stops for a human. <paramref name="For"/>: <c>answers</c>, <c>ready</c> or <c>go</c>.</summary>
+public sealed class JobWaitingException(string @for, string message) : InvalidOperationException(message)
+{
+    public string For { get; } = @for;
+}
 
 public sealed record StageState(StageStatus Status, DateTime? StartedAt = null, DateTime? FinishedAt = null, string? Error = null);
 
@@ -40,7 +48,13 @@ public sealed class Job
 
     public static Job Create(string home, string source, string? taskFile, string? id = null)
     {
-        id ??= NewId(source);
+        if (id is null)
+        {
+            // Two jobs for the same repository in the same second (the service takes requests in parallel) get -2, -3...
+            var stem = NewId(source);
+            id = stem;
+            for (var n = 2; Directory.Exists(Path.Combine(home, "jobs", id)); n++) id = $"{stem}-{n}";
+        }
         var dir = Path.Combine(home, "jobs", id);
         if (Directory.Exists(dir)) throw new InvalidOperationException($"job {id} already exists at {dir}");
         Directory.CreateDirectory(dir);

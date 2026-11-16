@@ -128,8 +128,9 @@ public sealed class SpecTests : IDisposable
     {
         var gaps = ClarifyTools.Number([new Gap("data", "Header?", "ask", "Write it", "high", "Header?", ClientDefault: "Yes")]);
         _job.WriteJson("clarify", "questions.json", gaps);
-        var e = Assert.Throws<InvalidOperationException>(() => SpecStage.AnswersOf(_job, gaps));
+        var e = Assert.Throws<JobWaitingException>(() => SpecStage.AnswersOf(_job, gaps));
         Assert.StartsWith("waiting for the client: 1 questions", e.Message);
+        Assert.Equal("answers", e.For);
         Answers.Record(_job, new Dictionary<string, string>(), defaults: true);
         Assert.Single(SpecStage.AnswersOf(_job, gaps));
         Assert.Empty(SpecStage.AnswersOf(_job, []));

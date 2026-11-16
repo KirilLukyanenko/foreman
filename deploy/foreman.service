@@ -1,0 +1,27 @@
+# foreman serve under systemd. Install: copy the published build to /opt/foreman, create the user with its home in
+# /var/lib/foreman (useradd --system --home-dir /var/lib/foreman --create-home foreman: ProtectSystem=strict leaves only
+# that writable, and Claude Code keeps its settings there) and
+# /etc/foreman/foreman.env (FOREMAN_TOKEN, FOREMAN_HOME, CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY; mode 0600),
+# then: systemctl enable --now foreman
+[Unit]
+Description=Foreman job service
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+User=foreman
+Group=foreman
+SupplementaryGroups=docker
+EnvironmentFile=/etc/foreman/foreman.env
+WorkingDirectory=/opt/foreman
+ExecStart=/opt/foreman/foreman serve --urls http://127.0.0.1:8095
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/foreman
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- foreman serve: jobs over HTTP for Tower, a queue and a worker that run them on this machine. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Foreman.Implement\Foreman.Implement.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Foreman.Tests" />
+  </ItemGroup>
+</Project>

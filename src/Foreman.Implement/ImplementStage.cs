@@ -55,7 +55,7 @@ public sealed class ImplementStage(IAgentDriver? driver, ImplementOptions? optio
 
     public async Task RunAsync(Job job, CancellationToken ct)
     {
-        if (Ready.Check(job) is { } notReady) throw new InvalidOperationException(notReady);
+        if (Ready.Check(job) is { } notReady) throw new JobWaitingException("ready", notReady);
         if (driver is null) throw new InvalidOperationException("implementing needs a model: agents are off");
         var clock = Stopwatch.StartNew();
         var env = TestEnvironment.Of(job);

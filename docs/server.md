@@ -33,7 +33,7 @@ Every `/api` call needs `Authorization: Bearer $FOREMAN_TOKEN`. `/health` doesn'
 | `POST /api/jobs/{id}/go` | Overrides intake's no-go and queues the job. |
 | `POST /api/jobs/{id}/run` | Queues the job again (after a failure). |
 | `POST /api/jobs/{id}/cancel` | Stops a running job (its stage fails as cancelled) or drops a queued one. |
-| `GET /api/jobs/{id}/files/{name}` | One of `brief.md`, `questions.md`, `dossier.md`, `prp.md`, `pr.md`, `patch.diff`, `implement.json`, `verify.json`, `acceptance.json`, `serve.log`. Nothing else in the job folder is served. |
+| `GET /api/jobs/{id}/files/{name}` | One of `brief.md`, `questions.md`, `dossier.md`, `prp.md`, `pr.md`, `report.md`, `patch.diff`, `implement.json`, `verify.json`, `acceptance.json`, `serve.log`. Nothing else in the job folder is served. |
 
 Nothing is pushed to the client's repository or sent to anyone: the human takes the patch and the PR text.
 

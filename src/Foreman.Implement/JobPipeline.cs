@@ -24,11 +24,12 @@ public sealed record JobPipelineOptions(
     string SpecModel = SpecOptions.DefaultModel,
     bool Go = false,
     AcceptanceOptions? Acceptance = null,
-    ImplementOptions? Implement = null);
+    ImplementOptions? Implement = null,
+    DeliverOptions? Deliver = null);
 
 /// <summary>
 /// The whole job, from task text to a verified patch, in order: intake and the go gate (before recon spends anything),
-/// recon, clarify, the PRP, the hidden acceptance tests, implement and verify. The stages that need a human stop with
+/// recon, clarify, the PRP, the hidden acceptance tests, implement and verify, the client report. The stages that need a human stop with
 /// <see cref="JobWaitingException"/> and pick up where they left off when the job runs again. The CLI and the service
 /// build the same pipeline here.
 /// </summary>
@@ -53,5 +54,6 @@ public static class JobPipeline
         new SpecStage(driver, new SpecOptions(o.SpecModel), log),
         .. o.Acceptance is null ? Array.Empty<IStage>() : [new AcceptanceStage(driver, o.Acceptance, log)],
         new ImplementStage(driver, o.Implement ?? new ImplementOptions(), log),
+        new DeliverStage(driver, o.Deliver, log),
     ];
 }

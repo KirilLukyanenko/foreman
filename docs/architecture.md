@@ -340,10 +340,16 @@ the implementer and the reviewer. Getting there also found that environments mus
 tests run (see `docs/implement-runs.md`).
 UI tasks (later): Playwright checks with screenshots attached to the PR; SWE-Lancer grades freelance work end to end.
 
-### 7. Select and deliver (later)
-Selection order: fail-to-pass, then pass-to-pass, then reviewer verdict, then an LLM judge as tie-break.
-Outputs: the PR description in the repository's style and a report for the client in their language (what was
-done, how it was checked, what is open, cost, time). Nothing is pushed or sent automatically.
+### 7. Select and deliver (built)
+Selection among parallel candidates is in stage 5. The deliver stage writes the report for the client in their
+language (Claude Sonnet 5.5) after the change is verified: what was wrong or wanted, what changed, how it was checked,
+what is open. The model sees only numbered **facts** code gathered from the job's files (the brief, the client's
+answers and the defaults used, each requirement done or not, the test results, the hidden acceptance tests, the
+review, the checks that couldn't run, the cases the tests leave open, the time taken), and every line it writes cites
+them. Code checks that every number in a line is in a fact it cites, that every fact the client must hear (a
+requirement not done, a default assumed, a check that couldn't run, an open case) is in the open part, that the text is
+in the client's language, and that it names none of Foreman's internals. `deliver/report.md` is for the client;
+`delivery.json` keeps the facts and what the job cost for the human. Nothing is pushed or sent: the human sends it.
 
 ### 8. Metrics (now, grows with each stage)
 Every stage appends events (time, tokens, cache hits, cost, outcome) to the job's audit log; every run appends one

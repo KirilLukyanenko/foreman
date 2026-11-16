@@ -32,7 +32,7 @@ public sealed record JobView(string Id, string Source, string? Title, string Pha
 public static class JobViews
 {
     /// <summary>The pipeline's stage names in order, for "which stage is it at".</summary>
-    public static readonly string[] Order = ["intake", "go", "fetch", "triage", "security", "codemap", "environment", "baseline", "dossier", "clarify", "spec", "accept", "implement"];
+    public static readonly string[] Order = ["intake", "go", "fetch", "triage", "security", "codemap", "environment", "baseline", "dossier", "clarify", "spec", "accept", "implement", "deliver"];
 
     public static JobView Of(Job job, string? activity = null)
     {
@@ -59,7 +59,7 @@ public static class JobViews
         if (ordered.FirstOrDefault(s => s.State.Status == StageStatus.Running) is { Name: not null } r)
             return View("interrupted", r.Name, "the service stopped while this stage was running; running the job again resumes it");
         if (states.TryGetValue("implement", out var impl) && impl.Status == StageStatus.Done)
-            return View("verified", "implement", null);
+            return View("verified", states.TryGetValue("deliver", out var deliver) && deliver.Status == StageStatus.Done ? "deliver" : "implement", null);
         return View("new", ordered.LastOrDefault().Name, null);
     }
 

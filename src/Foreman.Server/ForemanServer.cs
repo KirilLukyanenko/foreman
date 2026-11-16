@@ -39,6 +39,7 @@ public static class ForemanServer
         ["dossier.md"] = "dossier/dossier.md",
         ["prp.md"] = "spec/prp.md",
         ["pr.md"] = "implement/pr.md",
+        ["report.md"] = "deliver/report.md",
         ["patch.diff"] = "implement/patch.diff",
         ["implement.json"] = "implement/implement.json",
         ["verify.json"] = "verify/verify.json",
@@ -102,6 +103,7 @@ public static class ForemanServer
                 questions = view.Phase == "waiting_answers" ? JobViews.Questions(job) : null,
                 prp = view.Phase == "waiting_ready" ? Read(job, "spec/prp.md") : null,
                 pr = Read(job, "implement/pr.md"),
+                report = Read(job, "deliver/report.md"),
                 files = Files.Where(f => File.Exists(Path.Combine(job.Dir, f.Value))).Select(f => f.Key).ToList(),
                 log = Tail(Read(job, "serve.log"), 40),
             });

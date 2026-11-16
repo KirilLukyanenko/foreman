@@ -269,6 +269,7 @@ IToolbox Toolbox(string? kind)
         "intake" => new IntakeTools(job),
         "spec" => new SpecTools(job),
         "accept" => new AcceptanceTools(job),
+        "deliver" => new DeliveryTools(job, DeliveryFacts.Of(job), job.ReadJson<Brief>("intake", "brief.json").Language),
         "implement" => new ImplementTools(job, AttemptFromArgs()),
         "review" => new ReviewTools(job, AttemptFromArgs()),
         "clarify" => new ClarifyTools(job, job.ReadJson<Brief>("intake", "brief.json").Language),

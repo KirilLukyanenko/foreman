@@ -110,3 +110,18 @@ fetch, triage, security, code map, environment (the deterministic plan, no agent
 skipped), the four readers, clarify (clear: two assumptions, one gap closed by the code) and the spec (7
 requirements, 6 of them checked by a test or a command, accepted on the first submission) in about 4.5 minutes and
 about $0.94 of model use (list-price estimate). This PRP's validation loop has the baseline's verified test command.
+
+## 17 November 2026: clarify with a required scope gap
+
+After clarify was made to record a `scope` gap for every bug and feature (siblings, the shared root, with code as
+evidence; see [implement runs](implement-runs.md#17-november-2026-clarify-decides-how-far-the-fix-reaches)), the
+same eval again (`foreman eval clarify --runs 3`, [results](../evals/clarify/results.md)): the worry was more
+questions.
+
+- **143/144 checks, as before. Over-asking didn't grow:** on the real issues 28 of 30 runs asked nothing (27 before).
+  The two that asked were MediatR again, with the same real question. The scope gap is mostly closed from the code or
+  assumed; on the written tasks the questions are the same ones as before.
+- **The failed check is new:** one MediatR run sent a single gap's fields as the whole `submit_gaps` input, three
+  times, and ran out of attempts. The answer it got ("gaps must be an array of gap objects") didn't say what was
+  wrong; it now names what was sent and the expected shape.
+- Cost $9.60 for 42 runs, up from $7.98: reading siblings and the root takes a few more tool calls.

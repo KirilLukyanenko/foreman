@@ -36,6 +36,25 @@ Start from the brief's `unknowns` and the dossier's open questions, then go thro
 - **acceptance**: how the client will check it's done;
 - **ux**, **performance**, **security**, **delivery** (PR, patch, branch, deadline) when they matter here.
 
+## Scope: how far the fix reaches
+
+For a bug or a feature, always record one `scope` gap, with evidence from the code. This is where a fix most often
+parts ways with what the maintainers would have done: a change that is right but narrower than theirs.
+
+- **Siblings.** Does the same behaviour live in more than one place: other implementations of the same interface
+  (routers, drivers, adapters, formatters), parallel code paths, other entry points into the same logic? Read them:
+  would the reported input go wrong there too?
+- **The root.** Is the cause in the place the task names, or in something shared underneath that other callers use
+  (a public function, a base class, a decoder)? What would those callers see if it changed?
+
+The default is the fix a maintainer would merge: the defect fixed wherever it shows for the same input, the reported
+place and its siblings, and fixed at the shared root when the root's current behaviour is itself the bug. Stay narrow
+only where the broader fix would change behaviour other callers rely on that the task doesn't call wrong. Close it by
+`repository` when the code settles it (cite the siblings and the root), `assume` with that default otherwise, and
+`ask` (impact high) when the broader fix changes a public API's output or reaches components the client didn't
+mention and the code can't tell which they want. Name the siblings and the root in `what`, and say in `answer` which
+of them the change covers.
+
 ## How to write it
 
 - `what` and `answer` in English, concrete: name the function, the option, the case.

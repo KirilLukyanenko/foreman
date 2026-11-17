@@ -207,6 +207,29 @@ public sealed class PlanningTests : IDisposable
     }
 
     [Fact]
+    public void A_bug_or_a_feature_needs_a_scope_decision_backed_by_the_code()
+    {
+        var scope = new Gap("scope", "export is the only writer; the cause is in its slice, not in a shared helper", "repository",
+            "The change covers export only: no sibling writes CSV", "medium", Evidence: [new Citation("src/export/csv.py", 3)]);
+        Assert.Empty(ClarifyTools.Check("clear", [Assume(), scope], "en", Repo(), "bug"));
+        Assert.Contains(ClarifyTools.Check("clear", [Assume()], "en", Repo(), "bug"), e => e.StartsWith("a bug or a feature needs one gap with topic scope", StringComparison.Ordinal));
+        Assert.Contains(ClarifyTools.Check("clear", [Assume(), scope with { Evidence = null, Resolution = "assume" }], "en", Repo(), "feature"),
+            e => e.StartsWith("a bug or a feature needs one gap with topic scope", StringComparison.Ordinal));
+        Assert.Empty(ClarifyTools.Check("clear", [Assume()], "en", Repo(), "docs"));
+    }
+
+    [Fact]
+    public void A_submission_without_a_gaps_array_says_what_was_sent()
+    {
+        static Dictionary<string, JsonElement> Input(string json) => JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
+        Assert.StartsWith("you sent one gap's fields (topic, what, resolution) as the whole input",
+            ClarifyTools.Shape(Input("""{"topic":"scope","what":"x","resolution":"assume"}""")), StringComparison.Ordinal);
+        Assert.StartsWith("gaps must be an array of gap objects, not a string",
+            ClarifyTools.Shape(Input("""{"verdict":"clear","gaps":"[]"}""")), StringComparison.Ordinal);
+        Assert.StartsWith("gaps is missing", ClarifyTools.Shape(Input("""{"verdict":"clear"}""")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Clarify_rules_are_enforced_by_code()
     {
         var errors = ClarifyTools.Check("clear", [

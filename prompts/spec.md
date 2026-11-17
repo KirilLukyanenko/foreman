@@ -43,7 +43,9 @@ check the same rules with other data.
 - `touch_points`: the files the change goes into, most important first, with the symbols that change (checked
   against the code). Mark files the change creates as new. Start from the dossier's "where the task lives".
 - `decisions`: fixed choices with reasons: clarify's answers, conventions the code follows (cite `path:line`), the
-  approach when there are several.
+  approach when there are several. Clarify's `scope` gap decides how far the change reaches; follow it. If your lab
+  shows a sibling implementation failing on the reported input that the scope gap didn't consider, it is in scope:
+  say so in a decision (source the scope gap's id) rather than putting it out of scope.
 - `gotchas`: traps specific to this code (from the dossier's risks and your reading): the trap, why, what to do.
 - `tasks`: in order, one commit each, each with `done_when` as a check. A bug starts with a `reproduce` task: a test
   that fails on the current code for the reported reason. A feature usually starts with one too.

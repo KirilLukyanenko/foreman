@@ -171,3 +171,31 @@ same nine PRPs and acceptance tests, the implementer and the gate three times ea
 - One run took 16 hours of wall time: the laptop went to sleep mid-run (Windows Modern Standby, 00:30 to 16:33), the
   model calls failed and resumed on wake. The run itself was fine; its time in the table isn't.
 - Implementing and reviewing cost $12.26 for the 27 runs (list-price estimates), about $0.45 a run.
+
+## 17 November 2026: clarify decides how far the fix reaches
+
+rich and hono failed the same way in every run: a correct fix, narrower than the maintainers'. In hono, clarify
+assumed "fix RegExpRouter" and never looked at the sibling routers; in rich, it said "fix `Text.from_ansi`" without
+weighing the public `AnsiDecoder.decode` underneath. So clarify now must record a `scope` gap for every bug and
+feature, backed by code it cites: do sibling implementations show the same defect for the same input, and is the
+cause in the named place or in something shared? The default is the fix a maintainer would merge (siblings included,
+the root fixed when its behaviour is itself the bug); a broader fix that changes a public API's output is a question.
+The spec follows the scope gap, and a sibling its lab shows failing is in scope.
+
+`foreman eval implement --reclarify --label scope` ([results](../evals/implement/results-scope.md)) runs clarify and
+the spec again (client defaults for any questions), then acceptance and implementation:
+
+- **Resolved 7/8 graded, up from 6/8; verified 9/9.** hono is resolved now: the scope gap traced the cause to
+  RegExpRouter's matching for any route, the spec's lab found TrieRouter wrong on the same input, and the fix covers
+  both, as the maintainers' does. Nothing that was resolved before regressed. One case of change on eight is not
+  distinguishable from chance (McNemar p = 1); what it shows is the mechanism working on the case it was built for.
+- **rich is still not resolved, for a different reason.** Clarify now names the root (`AnsiDecoder.decode` drops the
+  final empty line) and its other callers, then keeps `decode` unchanged on purpose so its public line count stays
+  the same, and fixes `from_ansi` alone. The maintainers changed `decode`, and their `test_decode` checks that. The
+  prompt says a broader fix that changes a public API's output is a question; clarify made it an assumption
+  instead. That is a judgement both ways, and the eval's stand-in client accepts defaults, so even asking would not
+  have changed the default here. Left as it is rather than tuned to one case.
+- One case took 4 hours of wall time: the laptop slept from 23:49 to 03:46 while the spec's closing turn waited on
+  the API (the Windows log shows the standby). The keep-awake helper ends with the eval it watches and wasn't
+  restarted for this run; the work itself was fine.
+- Implementing and reviewing cost $5.26, planning $7.24 (list-price estimates).

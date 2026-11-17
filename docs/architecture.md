@@ -194,6 +194,13 @@ and `submit_gaps`. Every gap gets one of three resolutions:
 - `ask`: different answers lead to different deliverables and a wrong guess means a rework. At most 5, high or
   medium impact only, each with a default in the client's language so the client can answer "yes".
 
+For a bug or a feature, one gap is required: `scope`, with evidence from the code. Does the defect live in sibling
+implementations too (other routers, drivers, adapters), and is its cause in the place the task names or in something
+shared underneath? The default is the fix a maintainer would merge: siblings included, the shared root fixed when its
+behaviour is itself the bug; a broader fix that changes a public API's output is a question. The spec follows this
+gap. It came from the implement eval, where the two unresolved cases were right but narrower than the maintainers'
+fix ([runs](implement-runs.md#17-november-2026-clarify-decides-how-far-the-fix-reaches)).
+
 Code checks the rules: the question limit, defaults present, evidence that exists, a verdict that agrees with the
 questions, and questions in the client's language (by script for Cyrillic languages and English). Outputs:
 `questions.md` (a draft in the client's language for the human to edit and send; Foreman never sends it),
@@ -203,8 +210,9 @@ questions, and questions in the client's language (by script for Cyrillic langua
 
 Measured with `foreman eval clarify` ([results](../evals/clarify/results.md)): tasks written against real
 repositories where the right behaviour is known, and the 10 real issues, which were fixed as written, so asking a
-lot there is over-asking. 143/144 checks over 42 runs; on the real issues 27 of 30 runs asked nothing (the three
-that asked were on MediatR, where the question is real); about $0.19 and under a minute per task.
+lot there is over-asking. 143/144 checks over 42 runs, with the scope gap required; on the real issues 28 of 30 runs
+asked nothing (the two that asked were on MediatR, where the question is real); about $0.23 and under a minute per
+task.
 
 During implementation the agent doesn't ask the client: the Ready PRP is the answer, and when it isn't enough the
 implementer stops with `give_up` for the human. An `ask_client` tool that answers from the spec or pauses the job is

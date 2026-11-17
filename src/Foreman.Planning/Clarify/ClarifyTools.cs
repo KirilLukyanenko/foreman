@@ -44,6 +44,7 @@ public sealed class ClarifyTools : IToolbox
     private readonly Job _job;
     private readonly string _dir;
     private readonly string _language;
+    private readonly string? _taskType;
     private readonly RepoReader _repo;
     private bool _started;
     private int _submissions;
@@ -52,6 +53,7 @@ public sealed class ClarifyTools : IToolbox
     {
         _job = job;
         _language = language;
+        _taskType = File.Exists(Path.Combine(job.Dir, "intake", "brief.json")) ? job.ReadJson<Intake.Brief>("intake", "brief.json").TaskType : null;
         _repo = new RepoReader(job);
         _dir = job.StageDir("clarify");
     }
@@ -86,12 +88,25 @@ public sealed class ClarifyTools : IToolbox
         return output;
     }
 
+    /// <summary>
+    /// What to say when <c>gaps</c> is missing. A model once sent one gap's fields as the whole input three times over,
+    /// and "gaps must be an array" didn't tell it what it had done.
+    /// </summary>
+    internal static string Shape(IReadOnlyDictionary<string, JsonElement> input)
+    {
+        const string expected = "submit_gaps takes {\"verdict\": \"clear\" or \"underspecified\", \"gaps\": [ {topic, what, resolution, answer, impact, evidence: [{path, line, note}], ...}, every gap ]}";
+        if (input.TryGetValue("gaps", out var g)) return $"gaps must be an array of gap objects, not a {g.ValueKind.ToString().ToLowerInvariant()}: {expected}";
+        return input.Keys.Any(k => k is "topic" or "what" or "resolution")
+            ? $"you sent one gap's fields ({string.Join(", ", input.Keys)}) as the whole input, with no verdict and no gaps array; {expected}"
+            : $"gaps is missing: {expected}";
+    }
+
     private ToolOutput Submit(IReadOnlyDictionary<string, JsonElement> input)
     {
         _submissions++;
         var verdict = ToolInput.String(input, "verdict") ?? "";
         var gaps = ToolInput.Array<Gap>(input, "gaps");
-        var errors = gaps is null ? ["gaps must be an array of gap objects (it may be empty)"] : Check(verdict, gaps, _language, _repo);
+        var errors = gaps is null ? [Shape(input)] : Check(verdict, gaps, _language, _repo, _taskType);
         if (errors.Count > 0 && _submissions < MaxSubmissions)
             return new ToolOutput($"NOT ACCEPTED (attempt {_submissions} of {MaxSubmissions}), fix these and call submit_gaps again:\n- " + string.Join("\n- ", errors), true);
 
@@ -100,10 +115,14 @@ public sealed class ClarifyTools : IToolbox
         return new ToolOutput(errors.Count == 0 ? "ACCEPTED. You are done: stop now." : "Kept with the problems listed as warnings. Stop now.", false);
     }
 
-    internal static List<string> Check(string verdict, IReadOnlyList<Gap> gaps, string language, RepoReader? repo)
+    internal static List<string> Check(string verdict, IReadOnlyList<Gap> gaps, string language, RepoReader? repo, string? taskType = null)
     {
         var errors = new List<string>();
         if (!Verdicts.Contains(verdict)) errors.Add($"verdict must be one of {string.Join(", ", Verdicts)}");
+        // How far the change reaches is decided here, with the code in hand, not left to the spec: the same defect in a
+        // sibling implementation, or a root cause in a shared public function, is where fixes and maintainers part ways.
+        if (taskType is "bug" or "feature" && !gaps.Any(g => g.Topic == "scope" && g.Evidence is { Count: > 0 }))
+            errors.Add("a bug or a feature needs one gap with topic scope and evidence: does the same behaviour live in sibling implementations (and do they show the same problem for the same input), and is the cause in the place the task names or in something shared underneath that other callers use? Resolve it by repository, assume or ask, citing the code");
         if (gaps.Count > MaxGaps) errors.Add($"at most {MaxGaps} gaps: merge related ones");
         var asks = gaps.Where(g => g.Resolution == "ask").ToList();
         if (asks.Count > MaxQuestions) errors.Add($"{asks.Count} questions; at most {MaxQuestions}. Keep the ones whose answer changes what gets built; assume the rest and state the default");

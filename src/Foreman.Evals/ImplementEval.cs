@@ -52,7 +52,7 @@ public sealed record ImplementEvalReport(DateTime At, string Model, int Cases, I
 /// applied over the result and run: Foreman's own gate saying "verified" is a claim, the hidden tests are the check.
 /// </summary>
 public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOptions options, Action<string>? log = null, bool keepSpec = false, AcceptanceOptions? acceptance = null,
-    int runs = 1, bool reusePlanning = false, string? label = null)
+    int runs = 1, bool reusePlanning = false, string? label = null, bool reclarify = false)
 {
     public static IReadOnlyList<ImplementCase> ReadCases(string path) =>
         JsonSerializer.Deserialize<List<ImplementCase>>(File.ReadAllText(path), LocalizationEval.CaseJson) ?? [];
@@ -101,9 +101,14 @@ public sealed class ImplementEval(string home, IAgentDriver driver, ImplementOpt
                 new FetchStage(recon), new TriageStage(), new SecurityStage(null, Log), new CodeMapStage(null),
                 new EnvironmentStage(recon, driver, Log), new BaselineStage(recon, Log),
                 new DossierStage(driver, new DossierOptions(Sections: []), Log),
-                .. keepSpec ? Array.Empty<IStage>() : [new SpecStage(driver, new SpecOptions(), Log)],
+                // Clarify again when its rules changed; the client's defaults stand in for answers, as in the spec eval.
+                .. reclarify ? [new Planning.Clarify.ClarifyStage(driver, new Planning.Clarify.ClarifyOptions(), Log)] : Array.Empty<IStage>(),
             ];
             var ok = await new Pipeline(planning).RunAsync(job, planning.Select(s => s.Name).ToHashSet(), Log, ct);
+            if (ok && reclarify && job.ReadJson<List<Planning.Clarify.Gap>>("clarify", "questions.json").Any(g => g.Resolution == "ask"))
+                Planning.Clarify.Answers.Record(job, new Dictionary<string, string>(), defaults: true);
+            if (ok && !keepSpec)
+                ok = await new Pipeline([new SpecStage(driver, new SpecOptions(), Log)]).RunAsync(job, new HashSet<string> { "spec" }, Log, ct);
             if (!ok)
             {
                 yield return new ImplementRun(c.Id, c.Language, failedStage, "recon_failed", error, 0, false, null, null, 0, 0, 0, 0, PlanningCost(job), Math.Round(clock.Elapsed.TotalSeconds, 1));

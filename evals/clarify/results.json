@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-15T00:44:59.8224682Z",
+  "at": "2026-11-17T05:58:34.5756747Z",
   "model": "claude-opus-5-5",
   "cases": 14,
   "runs": 3,
@@ -12,84 +12,6 @@
       "delivered": true,
       "verdict": "underspecified",
       "questions": 1,
-      "assumptions": 2,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "at least 1 answered by the code",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [
-        "Q1 (high) The library already has this guard: Guard.Against.StringTooLong(userName, 50) throws when the name is longer than 50 characters, and it already has tests. Is that what you need, or do you want something different?"
-      ],
-      "costUsd": 0.1638,
-      "costIsEstimate": true,
-      "seconds": 32.7,
-      "toolCalls": 4
-    },
-    {
-      "id": "guardclauses-string-length",
-      "run": 2,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
-      "assumptions": 1,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "at least 1 answered by the code",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [
-        "Q1 (high) The library already has this guard: Guard.Against.StringTooLong(userName, 50) throws when a string is longer than 50 characters, and it already has tests. Does that cover what you need, or do you want it to work differently?"
-      ],
-      "costUsd": 0.1506,
-      "costIsEstimate": true,
-      "seconds": 28,
-      "toolCalls": 4
-    },
-    {
-      "id": "guardclauses-string-length",
-      "run": 3,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
       "assumptions": 1,
       "fromRepository": 1,
       "warnings": 0,
@@ -116,108 +38,19 @@
         }
       ],
       "asked": [
-        "Q1 (high) The library already has a guard for this, Guard.Against.StringTooLong(value, maxLength). Was something about it not working for you, or should I just add tests for the 50-character case and document it?"
+        "Q1 (high) The library already has this check: Guard.Against.StringTooLong(userName, 50) throws an ArgumentException when a string is longer than 50 characters, and it already has tests. Is that what you need, or is something missing from it?"
       ],
-      "costUsd": 0.1542,
+      "costUsd": 0.2252,
       "costIsEstimate": true,
-      "seconds": 31,
-      "toolCalls": 4
-    },
-    {
-      "id": "hono-rate-limit",
-      "run": 1,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
-      "assumptions": 2,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "verdict",
-          "pass": true,
-          "got": "underspecified"
-        },
-        {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "at most 5 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [
-        "Q1 (high) Should request counts be kept only in the server\u0027s memory, or should users also be able to plug in shared storage (such as Redis or Cloudflare KV) so limits work across several servers?"
-      ],
-      "costUsd": 0.2043,
-      "costIsEstimate": true,
-      "seconds": 44,
+      "seconds": 33.4,
       "toolCalls": 10
     },
     {
-      "id": "hono-rate-limit",
+      "id": "guardclauses-string-length",
       "run": 2,
       "delivered": true,
       "verdict": "underspecified",
-      "questions": 2,
-      "assumptions": 3,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "verdict",
-          "pass": true,
-          "got": "underspecified"
-        },
-        {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "at most 5 questions",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [
-        "Q1 (high) Should the rate limiter only count requests in the server\u0027s own memory, or should it also let you plug in shared storage (for example Redis or Cloudflare KV) so limits hold across several servers?",
-        "Q2 (medium) Hono\u0027s middleware docs are hosted on hono.dev, which is a separate repository. Should the docs be JSDoc in the code plus a ready-to-paste docs page in the pull request, or do you also want a separate pull request to the website repository?"
-      ],
-      "costUsd": 0.2607,
-      "costIsEstimate": true,
-      "seconds": 49.9,
-      "toolCalls": 13
-    },
-    {
-      "id": "hono-rate-limit",
-      "run": 3,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 2,
+      "questions": 1,
       "assumptions": 1,
       "fromRepository": 2,
       "warnings": 0,
@@ -228,17 +61,12 @@
           "got": "yes"
         },
         {
-          "field": "verdict",
+          "field": "at most 2 questions",
           "pass": true,
-          "got": "underspecified"
+          "got": "1"
         },
         {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "at most 5 questions",
+          "field": "at least 1 answered by the code",
           "pass": true,
           "got": "2"
         },
@@ -249,155 +77,21 @@
         }
       ],
       "asked": [
-        "Q1 (high) Should the rate limiter just count requests in the server\u0027s memory, or should it also let you plug in a shared store (like Redis or Cloudflare KV) so the limit holds across several servers or edge locations?",
-        "Q2 (medium) Hono\u0027s documentation website is kept separately from the main code. Should I also write the website page for the rate limiter, or are code comments with examples enough?"
+        "Q1 (high) The library already has a guard for this: Guard.Against.StringTooLong(userName, 50) throws when the string is longer than 50 characters, and it already has tests. Is that enough for you, or do you need something it doesn't do yet?"
       ],
-      "costUsd": 0.2498,
+      "costUsd": 0.1973,
       "costIsEstimate": true,
-      "seconds": 46.1,
-      "toolCalls": 14
-    },
-    {
-      "id": "humanize-ru-sizes",
-      "run": 1,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 2,
-      "assumptions": 1,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "verdict",
-          "pass": true,
-          "got": "underspecified"
-        },
-        {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "at most 4 questions",
-          "pass": true,
-          "got": "2"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "ru"
-        }
-      ],
-      "asked": [
-        "Q1 (high) \u0412 \u0432\u0430\u0448\u0438\u0445 \u043F\u0440\u0438\u043C\u0435\u0440\u0430\u0445 \u00AB10 \u041A\u0411\u00BB \u0438 \u00AB3 \u0413\u0411\u00BB \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u044B \u0431\u0435\u0437 \u0434\u0440\u043E\u0431\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438. \u0423\u0431\u0438\u0440\u0430\u0442\u044C \u00AB,0\u00BB \u0443 \u0446\u0435\u043B\u044B\u0445 \u0447\u0438\u0441\u0435\u043B, \u0442\u043E \u0435\u0441\u0442\u044C \u043F\u0438\u0441\u0430\u0442\u044C \u00AB10 \u041A\u0411\u00BB, \u0430 \u043D\u0435 \u00AB10,0 \u041A\u0411\u00BB?",
-        "Q2 (medium) \u0421\u0447\u0438\u0442\u0430\u0442\u044C 1 \u041A\u0411 = 1000 \u0431\u0430\u0439\u0442 (\u043A\u0430\u043A \u0441\u0435\u0439\u0447\u0430\u0441 \u0432 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0435) \u0438\u043B\u0438 1 \u041A\u0411 = 1024 \u0431\u0430\u0439\u0442\u0430?"
-      ],
-      "costUsd": 0.2100,
-      "costIsEstimate": true,
-      "seconds": 40.9,
+      "seconds": 40,
       "toolCalls": 6
     },
     {
-      "id": "humanize-ru-sizes",
-      "run": 2,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
-      "assumptions": 3,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "verdict",
-          "pass": true,
-          "got": "underspecified"
-        },
-        {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "at most 4 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "ru"
-        }
-      ],
-      "asked": [
-        "Q1 (high) \u041A\u0430\u043A \u0432\u043A\u043B\u044E\u0447\u0430\u0442\u044C \u0440\u0443\u0441\u0441\u043A\u0438\u0439 \u0432\u044B\u0432\u043E\u0434? \u041E\u0431\u044B\u0447\u043D\u043E \u0432 humanize \u044F\u0437\u044B\u043A \u0432\u043A\u043B\u044E\u0447\u0430\u044E\u0442 \u043E\u0434\u0438\u043D \u0440\u0430\u0437 \u0432\u044B\u0437\u043E\u0432\u043E\u043C humanize.i18n.activate(\u0022ru_RU\u0022), \u0430 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0430\u043D\u0433\u043B\u0438\u0439\u0441\u043A\u0438\u0439. \u0418\u043B\u0438 \u0432\u0430\u043C \u043D\u0443\u0436\u043D\u043E, \u0447\u0442\u043E\u0431\u044B naturalsize \u0432\u0441\u0435\u0433\u0434\u0430 \u0432\u044B\u0432\u043E\u0434\u0438\u043B \u043F\u043E-\u0440\u0443\u0441\u0441\u043A\u0438, \u0431\u0435\u0437 \u0432\u0441\u044F\u043A\u0438\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A?"
-      ],
-      "costUsd": 0.2711,
-      "costIsEstimate": true,
-      "seconds": 54.2,
-      "toolCalls": 10
-    },
-    {
-      "id": "humanize-ru-sizes",
+      "id": "guardclauses-string-length",
       "run": 3,
       "delivered": true,
       "verdict": "underspecified",
       "questions": 1,
-      "assumptions": 3,
-      "fromRepository": 1,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "verdict",
-          "pass": true,
-          "got": "underspecified"
-        },
-        {
-          "field": "at least 1 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "at most 4 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "ru"
-        }
-      ],
-      "asked": [
-        "Q1 (high) \u0412\u0430\u043C \u043F\u043E\u0434\u043E\u0439\u0434\u0451\u0442, \u0435\u0441\u043B\u0438 \u0440\u0443\u0441\u0441\u043A\u0438\u0435 \u0440\u0430\u0437\u043C\u0435\u0440\u044B \u0432\u043A\u043B\u044E\u0447\u0430\u044E\u0442\u0441\u044F \u0432\u044B\u0437\u043E\u0432\u043E\u043C humanize.i18n.activate(\u0022ru_RU\u0022) (\u043A\u0430\u043A \u044D\u0442\u043E \u0443\u0436\u0435 \u0441\u0434\u0435\u043B\u0430\u043D\u043E \u0434\u043B\u044F \u0434\u0430\u0442 \u0438 \u0447\u0438\u0441\u0435\u043B \u0432 humanize), \u0438\u043B\u0438 naturalsize \u0434\u043E\u043B\u0436\u0435\u043D \u0432\u0441\u0435\u0433\u0434\u0430 \u0432\u044B\u0432\u043E\u0434\u0438\u0442\u044C \u043F\u043E-\u0440\u0443\u0441\u0441\u043A\u0438 \u0431\u0435\u0437 \u0432\u0441\u044F\u043A\u0438\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A?"
-      ],
-      "costUsd": 0.2182,
-      "costIsEstimate": true,
-      "seconds": 44.3,
-      "toolCalls": 7
-    },
-    {
-      "id": "itsdangerous-stronger-algorithm",
-      "run": 1,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
       "assumptions": 1,
-      "fromRepository": 2,
+      "fromRepository": 3,
       "warnings": 0,
       "checks": [
         {
@@ -412,6 +106,94 @@
         },
         {
           "field": "at least 1 answered by the code",
+          "pass": true,
+          "got": "3"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [
+        "Q1 (high) The library already has this guard: Guard.Against.StringTooLong(input, maxLength), which throws an ArgumentException when the string is longer than the maximum. Do you need anything beyond it?"
+      ],
+      "costUsd": 0.1784,
+      "costIsEstimate": true,
+      "seconds": 36.6,
+      "toolCalls": 5
+    },
+    {
+      "id": "hono-rate-limit",
+      "run": 1,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 2,
+      "fromRepository": 3,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
+        },
+        {
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "at most 5 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [
+        "Q1 (medium) The Hono documentation website is kept in a separate repository. Should the docs be just the in-code documentation, or should we also write the page for the hono.dev website?"
+      ],
+      "costUsd": 0.2405,
+      "costIsEstimate": true,
+      "seconds": 48.5,
+      "toolCalls": 12
+    },
+    {
+      "id": "hono-rate-limit",
+      "run": 2,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 2,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
+        },
+        {
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "2"
+        },
+        {
+          "field": "at most 5 questions",
           "pass": true,
           "got": "2"
         },
@@ -422,20 +204,21 @@
         }
       ],
       "asked": [
-        "Q1 (high) itsdangerous can already sign with stronger algorithms like SHA-256 if you pass a setting, but the default is still SHA-1. Should we change the default for everyone, which breaks tokens that already exist unless we also accept old SHA-1 tokens, or keep the default and make the stronger option easier to find and use?"
+        "Q1 (high) Where should the request counts be kept? An in-memory store only works within a single server process. For it to work across several instances or on Cloudflare Workers, you need a pluggable store (for example Redis or KV).",
+        "Q2 (medium) Hono's middleware docs live on the hono.dev website, which is a separate repository. Should I also write a docs page for the website, or are code comments and usage examples inside this repository enough?"
       ],
-      "costUsd": 0.2157,
+      "costUsd": 0.2269,
       "costIsEstimate": true,
-      "seconds": 37.3,
+      "seconds": 46,
       "toolCalls": 9
     },
     {
-      "id": "itsdangerous-stronger-algorithm",
-      "run": 2,
+      "id": "hono-rate-limit",
+      "run": 3,
       "delivered": true,
       "verdict": "underspecified",
-      "questions": 3,
-      "assumptions": 1,
+      "questions": 1,
+      "assumptions": 3,
       "fromRepository": 1,
       "warnings": 0,
       "checks": [
@@ -445,12 +228,17 @@
           "got": "yes"
         },
         {
-          "field": "at most 2 questions",
-          "pass": false,
-          "got": "3"
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
         },
         {
-          "field": "at least 1 answered by the code",
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "at most 5 questions",
           "pass": true,
           "got": "1"
         },
@@ -461,18 +249,148 @@
         }
       ],
       "asked": [
-        "Q1 (high) itsdangerous can already sign with SHA-256 or SHA-512 if you pass it as an option. Do you want the library\u0027s default changed so that everyone gets the stronger hash without configuring anything?",
-        "Q2 (high) After the switch, should tokens already signed with SHA-1 still be accepted automatically, or should they be rejected unless you configure a fallback yourself?",
-        "Q3 (medium) Which algorithm should replace SHA-1: SHA-256 (shorter tokens) or SHA-512 (longer tokens)?"
+        "Q1 (high) Do you only need the limit to work on a single server (counts kept in memory), or must it also hold across several servers / serverless instances (counts kept in a shared store like Redis or Cloudflare KV that you plug in)?"
       ],
-      "costUsd": 0.2586,
+      "costUsd": 0.2297,
       "costIsEstimate": true,
-      "seconds": 57.7,
-      "toolCalls": 7
+      "seconds": 43.3,
+      "toolCalls": 12
+    },
+    {
+      "id": "humanize-ru-sizes",
+      "run": 1,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 3,
+      "fromRepository": 1,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
+        },
+        {
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "at most 4 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "ru"
+        }
+      ],
+      "asked": [
+        "Q1 (high) Русские размеры должны включаться через стандартный переключатель языка библиотеки (один вызов humanize.i18n.activate(\"ru_RU\") при старте вашего сервиса) или стать поведением по умолчанию для всех без всяких настроек?"
+      ],
+      "costUsd": 0.3209,
+      "costIsEstimate": true,
+      "seconds": 65.5,
+      "toolCalls": 15
+    },
+    {
+      "id": "humanize-ru-sizes",
+      "run": 2,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
+        },
+        {
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "at most 4 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "ru"
+        }
+      ],
+      "asked": [
+        "Q1 (high) В ваших примерах «10 КБ» и «3 ГБ» без дробной части, а «1,5 МБ» с ней. Сейчас библиотека всегда печатает один знак после запятой, то есть «10,0 КБ». Убирать «,0» у целых значений?"
+      ],
+      "costUsd": 0.2815,
+      "costIsEstimate": true,
+      "seconds": 55.1,
+      "toolCalls": 13
+    },
+    {
+      "id": "humanize-ru-sizes",
+      "run": 3,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "verdict",
+          "pass": true,
+          "got": "underspecified"
+        },
+        {
+          "field": "at least 1 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "at most 4 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "ru"
+        }
+      ],
+      "asked": [
+        "Q1 (high) Как включать русский вывод? Мы предлагаем стандартный механизм библиотеки: в сервисе один раз вызывается humanize.i18n.activate(\"ru_RU\"), и naturalsize начинает писать «КБ», «МБ». Но тогда на русский переключатся и другие функции humanize, если вы их используете, например «3 секунды назад». Это подходит?"
+      ],
+      "costUsd": 0.2835,
+      "costIsEstimate": true,
+      "seconds": 52.3,
+      "toolCalls": 12
     },
     {
       "id": "itsdangerous-stronger-algorithm",
-      "run": 3,
+      "run": 1,
       "delivered": true,
       "verdict": "underspecified",
       "questions": 1,
@@ -502,308 +420,20 @@
         }
       ],
       "asked": [
-        "Q1 (high) The library can already sign with stronger algorithms (e.g. SHA-256/SHA-512) via a setting, but the default is still SHA-1. What do you want changed: make the stronger algorithm the new default for everyone, or keep the default and just make the stronger option easier to use and documented?"
+        "Q1 (high) itsdangerous can already sign with SHA-256 or SHA-512 if you pass that option when creating the signer. Should we change the library default away from SHA-1, or keep the default and make the stronger option documented, tested and easy to switch to? Changing the default means tokens you have already issued stop being valid, unless SHA-1 is kept as a fallback for checking them."
       ],
-      "costUsd": 0.1922,
+      "costUsd": 0.2971,
       "costIsEstimate": true,
-      "seconds": 39.8,
+      "seconds": 55.9,
       "toolCalls": 8
     },
     {
-      "id": "ardalis-GuardClauses-339",
-      "run": 1,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 1,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1448,
-      "costIsEstimate": true,
-      "seconds": 25.2,
-      "toolCalls": 4
-    },
-    {
-      "id": "ardalis-GuardClauses-339",
+      "id": "itsdangerous-stronger-algorithm",
       "run": 2,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1497,
-      "costIsEstimate": true,
-      "seconds": 28.3,
-      "toolCalls": 4
-    },
-    {
-      "id": "ardalis-GuardClauses-339",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 4,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2018,
-      "costIsEstimate": true,
-      "seconds": 42.5,
-      "toolCalls": 5
-    },
-    {
-      "id": "App-vNext-Polly-2815",
-      "run": 1,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 1,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2673,
-      "costIsEstimate": true,
-      "seconds": 43.2,
-      "toolCalls": 7
-    },
-    {
-      "id": "App-vNext-Polly-2815",
-      "run": 2,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 1,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2851,
-      "costIsEstimate": true,
-      "seconds": 37.4,
-      "toolCalls": 7
-    },
-    {
-      "id": "App-vNext-Polly-2815",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2447,
-      "costIsEstimate": true,
-      "seconds": 27.8,
-      "toolCalls": 5
-    },
-    {
-      "id": "FluentValidation-FluentValidation-2240",
-      "run": 1,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 3,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1805,
-      "costIsEstimate": true,
-      "seconds": 33.8,
-      "toolCalls": 4
-    },
-    {
-      "id": "FluentValidation-FluentValidation-2240",
-      "run": 2,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 4,
-      "fromRepository": 1,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2658,
-      "costIsEstimate": true,
-      "seconds": 56,
-      "toolCalls": 9
-    },
-    {
-      "id": "FluentValidation-FluentValidation-2240",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 4,
-      "fromRepository": 1,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.2033,
-      "costIsEstimate": true,
-      "seconds": 34.4,
-      "toolCalls": 7
-    },
-    {
-      "id": "jbogard-MediatR-1118",
-      "run": 1,
       "delivered": true,
       "verdict": "underspecified",
       "questions": 1,
-      "assumptions": 3,
+      "assumptions": 1,
       "fromRepository": 1,
       "warnings": 0,
       "checks": [
@@ -818,27 +448,32 @@
           "got": "1"
         },
         {
+          "field": "at least 1 answered by the code",
+          "pass": true,
+          "got": "1"
+        },
+        {
           "field": "client language",
           "pass": true,
           "got": "en"
         }
       ],
       "asked": [
-        "Q1 (high) Today, a handler for a base event also runs for derived events on the default .NET container because MediatR registers it for both. Removing that extra registration fixes DryIoc, but on the default container C1 would then stop handling E2. Should we keep that behaviour and instead make sure each handler runs only once per publish, whatever the container?"
+        "Q1 (high) itsdangerous can already sign with SHA-256 or SHA-512 if you pass a setting (digest_method), but the built-in default is still SHA-1. Changing the default would make every token already issued stop verifying unless SHA-1 is still accepted as a fallback. Should we keep the default as it is and document and test how to switch to the stronger option, or change the library default?"
       ],
-      "costUsd": 0.2900,
+      "costUsd": 0.2819,
       "costIsEstimate": true,
-      "seconds": 64.8,
-      "toolCalls": 9
+      "seconds": 47.8,
+      "toolCalls": 8
     },
     {
-      "id": "jbogard-MediatR-1118",
-      "run": 2,
+      "id": "itsdangerous-stronger-algorithm",
+      "run": 3,
       "delivered": true,
       "verdict": "underspecified",
       "questions": 1,
-      "assumptions": 3,
-      "fromRepository": 0,
+      "assumptions": 1,
+      "fromRepository": 1,
       "warnings": 0,
       "checks": [
         {
@@ -852,61 +487,32 @@
           "got": "1"
         },
         {
+          "field": "at least 1 answered by the code",
+          "pass": true,
+          "got": "1"
+        },
+        {
           "field": "client language",
           "pass": true,
           "got": "en"
         }
       ],
       "asked": [
-        "Q1 (high) With the default Microsoft container, a handler for a base event only runs for a derived event because MediatR adds that extra registration. Removing it would stop that from working there. Should we keep the registration and remove the duplicate when the event is published, so each handler runs once on every container?"
+        "Q1 (high) itsdangerous can already sign with SHA-256 if you pass it as an option. Do you want SHA-256 to become the default for everyone? That would make all existing signed tokens invalid unless old SHA-1 tokens are explicitly accepted as a fallback."
       ],
-      "costUsd": 0.3305,
+      "costUsd": 0.2798,
       "costIsEstimate": true,
       "seconds": 64.5,
-      "toolCalls": 8
+      "toolCalls": 11
     },
     {
-      "id": "jbogard-MediatR-1118",
-      "run": 3,
-      "delivered": true,
-      "verdict": "underspecified",
-      "questions": 1,
-      "assumptions": 3,
-      "fromRepository": 0,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "1"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [
-        "Q1 (high) MediatR adds the extra registration on purpose: with the standard .NET container it is the only way a handler for a base event (C1 for E1) also runs for a derived event (E2). Removing it would stop C1 running for E2 at all on the standard container. The double call comes from DryIoc adding its own matching on top. What should we deliver?"
-      ],
-      "costUsd": 0.2827,
-      "costIsEstimate": true,
-      "seconds": 57.9,
-      "toolCalls": 8
-    },
-    {
-      "id": "honojs-hono-4325",
+      "id": "ardalis-GuardClauses-339",
       "run": 1,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 1,
+      "assumptions": 1,
+      "fromRepository": 3,
       "warnings": 0,
       "checks": [
         {
@@ -926,50 +532,18 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1784,
+      "costUsd": 0.2117,
       "costIsEstimate": true,
-      "seconds": 31.9,
-      "toolCalls": 4
+      "seconds": 50.5,
+      "toolCalls": 6
     },
     {
-      "id": "honojs-hono-4325",
+      "id": "ardalis-GuardClauses-339",
       "run": 2,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 3,
-      "fromRepository": 0,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1583,
-      "costIsEstimate": true,
-      "seconds": 28.1,
-      "toolCalls": 4
-    },
-    {
-      "id": "honojs-hono-4325",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
+      "assumptions": 4,
       "fromRepository": 1,
       "warnings": 0,
       "checks": [
@@ -990,18 +564,18 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1559,
+      "costUsd": 0.1726,
       "costIsEstimate": true,
-      "seconds": 23.7,
-      "toolCalls": 4
+      "seconds": 40.2,
+      "toolCalls": 5
     },
     {
-      "id": "unjs-defu-119",
-      "run": 1,
+      "id": "ardalis-GuardClauses-339",
+      "run": 3,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 2,
+      "assumptions": 1,
       "fromRepository": 2,
       "warnings": 0,
       "checks": [
@@ -1022,173 +596,13 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.0994,
+      "costUsd": 0.2141,
       "costIsEstimate": true,
-      "seconds": 24.5,
-      "toolCalls": 4
+      "seconds": 41.9,
+      "toolCalls": 7
     },
     {
-      "id": "unjs-defu-119",
-      "run": 2,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 1,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.0933,
-      "costIsEstimate": true,
-      "seconds": 24.1,
-      "toolCalls": 4
-    },
-    {
-      "id": "unjs-defu-119",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1038,
-      "costIsEstimate": true,
-      "seconds": 24.2,
-      "toolCalls": 4
-    },
-    {
-      "id": "pallets-itsdangerous-375",
-      "run": 1,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 3,
-      "fromRepository": 0,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1745,
-      "costIsEstimate": true,
-      "seconds": 32.7,
-      "toolCalls": 4
-    },
-    {
-      "id": "pallets-itsdangerous-375",
-      "run": 2,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 3,
-      "fromRepository": 1,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1400,
-      "costIsEstimate": true,
-      "seconds": 23.1,
-      "toolCalls": 3
-    },
-    {
-      "id": "pallets-itsdangerous-375",
-      "run": 3,
-      "delivered": true,
-      "verdict": "clear",
-      "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 2,
-      "warnings": 0,
-      "checks": [
-        {
-          "field": "accepted cleanly",
-          "pass": true,
-          "got": "yes"
-        },
-        {
-          "field": "at most 2 questions",
-          "pass": true,
-          "got": "0"
-        },
-        {
-          "field": "client language",
-          "pass": true,
-          "got": "en"
-        }
-      ],
-      "asked": [],
-      "costUsd": 0.1432,
-      "costIsEstimate": true,
-      "seconds": 23.6,
-      "toolCalls": 3
-    },
-    {
-      "id": "python-humanize-humanize-239",
+      "id": "App-vNext-Polly-2815",
       "run": 1,
       "delivered": true,
       "verdict": "clear",
@@ -1214,13 +628,305 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1474,
+      "costUsd": 0.2939,
       "costIsEstimate": true,
-      "seconds": 25.8,
+      "seconds": 51.4,
+      "toolCalls": 8
+    },
+    {
+      "id": "App-vNext-Polly-2815",
+      "run": 2,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2373,
+      "costIsEstimate": true,
+      "seconds": 36.6,
       "toolCalls": 5
     },
     {
-      "id": "python-humanize-humanize-239",
+      "id": "App-vNext-Polly-2815",
+      "run": 3,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.3011,
+      "costIsEstimate": true,
+      "seconds": 54.6,
+      "toolCalls": 7
+    },
+    {
+      "id": "FluentValidation-FluentValidation-2240",
+      "run": 1,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 3,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2899,
+      "costIsEstimate": true,
+      "seconds": 50.5,
+      "toolCalls": 9
+    },
+    {
+      "id": "FluentValidation-FluentValidation-2240",
+      "run": 2,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 4,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2460,
+      "costIsEstimate": true,
+      "seconds": 35.9,
+      "toolCalls": 8
+    },
+    {
+      "id": "FluentValidation-FluentValidation-2240",
+      "run": 3,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 3,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2402,
+      "costIsEstimate": true,
+      "seconds": 47,
+      "toolCalls": 7
+    },
+    {
+      "id": "jbogard-MediatR-1118",
+      "run": 1,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 2,
+      "fromRepository": 1,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [
+        "Q1 (high) On the default Microsoft container, a handler for a base event only runs for derived events because MediatR registers it a second time, and that second registration is what DryIoc runs twice. Should we keep the registrations and skip duplicate handlers when publishing, or remove the extra registration (which stops base-event handlers from running for derived events on the Microsoft container)?"
+      ],
+      "costUsd": 0.3333,
+      "costIsEstimate": true,
+      "seconds": 57.5,
+      "toolCalls": 11
+    },
+    {
+      "id": "jbogard-MediatR-1118",
+      "run": 2,
+      "delivered": true,
+      "verdict": "underspecified",
+      "questions": 1,
+      "assumptions": 4,
+      "fromRepository": 0,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "1"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [
+        "Q1 (high) MediatR deliberately registers a base-event handler (C1) for derived events (E2), because the default Microsoft container would not call C1 for E2 otherwise. DryIoc already does this matching itself, so C1 runs twice. How should we fix it?"
+      ],
+      "costUsd": 0.3315,
+      "costIsEstimate": true,
+      "seconds": 59.7,
+      "toolCalls": 11
+    },
+    {
+      "id": "jbogard-MediatR-1118",
+      "run": 3,
+      "delivered": true,
+      "verdict": "",
+      "questions": 0,
+      "assumptions": 0,
+      "fromRepository": 0,
+      "warnings": 1,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": false,
+          "got": "gaps must be an array of gap objects (it may be empty)"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.3710,
+      "costIsEstimate": true,
+      "seconds": 68.6,
+      "toolCalls": 15
+    },
+    {
+      "id": "honojs-hono-4325",
+      "run": 1,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2432,
+      "costIsEstimate": true,
+      "seconds": 41.8,
+      "toolCalls": 5
+    },
+    {
+      "id": "honojs-hono-4325",
       "run": 2,
       "delivered": true,
       "verdict": "clear",
@@ -1246,19 +952,115 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1400,
+      "costUsd": 0.2718,
       "costIsEstimate": true,
-      "seconds": 24.6,
-      "toolCalls": 4
+      "seconds": 37.7,
+      "toolCalls": 10
     },
     {
-      "id": "python-humanize-humanize-239",
+      "id": "honojs-hono-4325",
+      "run": 3,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2422,
+      "costIsEstimate": true,
+      "seconds": 33.4,
+      "toolCalls": 7
+    },
+    {
+      "id": "unjs-defu-119",
+      "run": 1,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1166,
+      "costIsEstimate": true,
+      "seconds": 24.9,
+      "toolCalls": 5
+    },
+    {
+      "id": "unjs-defu-119",
+      "run": 2,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1213,
+      "costIsEstimate": true,
+      "seconds": 25.1,
+      "toolCalls": 5
+    },
+    {
+      "id": "unjs-defu-119",
       "run": 3,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
       "assumptions": 2,
-      "fromRepository": 1,
+      "fromRepository": 2,
       "warnings": 0,
       "checks": [
         {
@@ -1278,19 +1080,19 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1366,
+      "costUsd": 0.1298,
       "costIsEstimate": true,
-      "seconds": 23.2,
-      "toolCalls": 3
+      "seconds": 28.2,
+      "toolCalls": 6
     },
     {
-      "id": "Textualize-rich-3577",
+      "id": "pallets-itsdangerous-375",
       "run": 1,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 4,
-      "fromRepository": 1,
+      "assumptions": 2,
+      "fromRepository": 2,
       "warnings": 0,
       "checks": [
         {
@@ -1310,13 +1112,13 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1536,
+      "costUsd": 0.1604,
       "costIsEstimate": true,
-      "seconds": 22.4,
-      "toolCalls": 3
+      "seconds": 24.3,
+      "toolCalls": 4
     },
     {
-      "id": "Textualize-rich-3577",
+      "id": "pallets-itsdangerous-375",
       "run": 2,
       "delivered": true,
       "verdict": "clear",
@@ -1342,19 +1144,19 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1696,
+      "costUsd": 0.2044,
       "costIsEstimate": true,
-      "seconds": 25,
-      "toolCalls": 4
+      "seconds": 30.5,
+      "toolCalls": 5
     },
     {
-      "id": "Textualize-rich-3577",
+      "id": "pallets-itsdangerous-375",
       "run": 3,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 4,
-      "fromRepository": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
       "warnings": 0,
       "checks": [
         {
@@ -1374,13 +1176,109 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1623,
+      "costUsd": 0.1679,
       "costIsEstimate": true,
-      "seconds": 22.7,
+      "seconds": 26.1,
       "toolCalls": 4
     },
     {
-      "id": "spf13-cobra-2240",
+      "id": "python-humanize-humanize-239",
+      "run": 1,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1590,
+      "costIsEstimate": true,
+      "seconds": 27.7,
+      "toolCalls": 3
+    },
+    {
+      "id": "python-humanize-humanize-239",
+      "run": 2,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1638,
+      "costIsEstimate": true,
+      "seconds": 25.9,
+      "toolCalls": 4
+    },
+    {
+      "id": "python-humanize-humanize-239",
+      "run": 3,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 1,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1434,
+      "costIsEstimate": true,
+      "seconds": 25.3,
+      "toolCalls": 3
+    },
+    {
+      "id": "Textualize-rich-3577",
       "run": 1,
       "delivered": true,
       "verdict": "clear",
@@ -1406,19 +1304,19 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1457,
+      "costUsd": 0.2214,
       "costIsEstimate": true,
-      "seconds": 22.1,
-      "toolCalls": 2
+      "seconds": 36.1,
+      "toolCalls": 7
     },
     {
-      "id": "spf13-cobra-2240",
+      "id": "Textualize-rich-3577",
       "run": 2,
       "delivered": true,
       "verdict": "clear",
       "questions": 0,
-      "assumptions": 2,
-      "fromRepository": 1,
+      "assumptions": 4,
+      "fromRepository": 0,
       "warnings": 0,
       "checks": [
         {
@@ -1438,9 +1336,105 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1291,
+      "costUsd": 0.1817,
       "costIsEstimate": true,
-      "seconds": 19.4,
+      "seconds": 25,
+      "toolCalls": 5
+    },
+    {
+      "id": "Textualize-rich-3577",
+      "run": 3,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 2,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2541,
+      "costIsEstimate": true,
+      "seconds": 39.7,
+      "toolCalls": 10
+    },
+    {
+      "id": "spf13-cobra-2240",
+      "run": 1,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.2000,
+      "costIsEstimate": true,
+      "seconds": 32.2,
+      "toolCalls": 4
+    },
+    {
+      "id": "spf13-cobra-2240",
+      "run": 2,
+      "delivered": true,
+      "verdict": "clear",
+      "questions": 0,
+      "assumptions": 1,
+      "fromRepository": 2,
+      "warnings": 0,
+      "checks": [
+        {
+          "field": "accepted cleanly",
+          "pass": true,
+          "got": "yes"
+        },
+        {
+          "field": "at most 2 questions",
+          "pass": true,
+          "got": "0"
+        },
+        {
+          "field": "client language",
+          "pass": true,
+          "got": "en"
+        }
+      ],
+      "asked": [],
+      "costUsd": 0.1569,
+      "costIsEstimate": true,
+      "seconds": 20.6,
       "toolCalls": 3
     },
     {
@@ -1450,7 +1444,7 @@
       "verdict": "clear",
       "questions": 0,
       "assumptions": 2,
-      "fromRepository": 3,
+      "fromRepository": 2,
       "warnings": 0,
       "checks": [
         {
@@ -1470,10 +1464,10 @@
         }
       ],
       "asked": [],
-      "costUsd": 0.1528,
+      "costUsd": 0.1764,
       "costIsEstimate": true,
-      "seconds": 26.4,
-      "toolCalls": 4
+      "seconds": 25,
+      "toolCalls": 3
     }
   ]
 }

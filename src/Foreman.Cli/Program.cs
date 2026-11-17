@@ -71,7 +71,7 @@ switch (args.FirstOrDefault())
               foreman eval intake [--runs 3] [--only id,id] [--agent claude-code|api] [--intake-model id]
               foreman eval clarify [--runs 3] [--only id,id] [--agent claude-code|api] [--clarify-model id]
               foreman eval spec [--runs 1] [--only id,id] [--agent claude-code|api] [--spec-model id]
-              foreman eval implement [--only id,id] [--runs 1] [--label name] [--reuse-planning] [--keep-spec] [--no-acceptance] [--no-review]
+              foreman eval implement [--only id,id] [--runs 1] [--label name] [--reuse-planning] [--reclarify] [--keep-spec] [--no-acceptance] [--no-review]
                                      [--candidates 1] [--implement-model id] [--review-model id] [--rounds 3]
               foreman eval compare <results-a.json> <results-b.json> [--out file.md]
               foreman eval redteam [--only id,id]          prompt injection planted in a repository and a task
@@ -223,7 +223,7 @@ async Task<int> EvalImplement()
     var runs = int.TryParse(Arg("--runs"), out var n) && n > 0 ? n : 1;
     var label = Arg("--label");
     var report = await new ImplementEval(home, driver, ImplementOptionsFromArgs(), Console.WriteLine, args.Contains("--keep-spec"),
-        args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs(), runs, args.Contains("--reuse-planning"), label).RunAsync(cases, casesFile, cts.Token);
+        args.Contains("--no-acceptance") ? null : AcceptanceOptionsFromArgs(), runs, args.Contains("--reuse-planning"), label, args.Contains("--reclarify")).RunAsync(cases, casesFile, cts.Token);
     var name = (label is null ? "results" : $"results-{label}") + (Arg("--only") is null ? "" : "-partial");
     File.WriteAllText(Path.Combine(outDir, name + ".json"), Json.Write(report));
     var md = ImplementEval.Markdown(report);

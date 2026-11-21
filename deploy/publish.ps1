@@ -23,9 +23,9 @@ New-Item -ItemType Directory -Force $bundle | Out-Null
 
 dotnet publish (Join-Path $root 'src/Foreman.Cli') -c Release -r linux-x64 --self-contained -o (Join-Path $bundle 'bin') -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
-Copy-Item (Join-Path $PSScriptRoot 'install.sh'), (Join-Path $PSScriptRoot 'foreman.service') $bundle
+Copy-Item (Join-Path $PSScriptRoot 'install.sh'), (Join-Path $PSScriptRoot 'foreman.service'), (Join-Path $PSScriptRoot 'foreman-idle.sh'), (Join-Path $PSScriptRoot 'foreman-idle.service'), (Join-Path $PSScriptRoot 'foreman-idle.timer') $bundle
 # Line endings: bash and systemd read LF only. The tar is Windows' own: Git's GNU tar reads "C:" as a remote host.
-foreach ($f in 'install.sh', 'foreman.service') {
+foreach ($f in 'install.sh', 'foreman.service', 'foreman-idle.sh', 'foreman-idle.service', 'foreman-idle.timer') {
     $path = Join-Path $bundle $f
     [IO.File]::WriteAllText($path, ([IO.File]::ReadAllText($path) -replace "`r`n", "`n"))
 }

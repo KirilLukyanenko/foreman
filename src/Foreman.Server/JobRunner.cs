@@ -16,6 +16,9 @@ public interface IJobRunner
 
     /// <summary>Stops a running job (its current stage fails as cancelled) or drops a queued one.</summary>
     bool Cancel(string id);
+
+    /// <summary>When the last job left the queue (or the runner started); null while a job is queued or running.</summary>
+    DateTime? IdleSince { get; }
 }
 
 /// <summary>
@@ -28,6 +31,9 @@ public sealed class JobRunner(string home, Func<Job, ServeMeta, IReadOnlyList<IS
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly ConcurrentDictionary<string, string> _activity = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _running = new(StringComparer.Ordinal);
+    private DateTime _idleSince = DateTime.UtcNow;
+
+    public DateTime? IdleSince => _activity.IsEmpty ? _idleSince : null;
 
     public bool Enqueue(string id)
     {
@@ -41,7 +47,9 @@ public sealed class JobRunner(string home, Func<Job, ServeMeta, IReadOnlyList<IS
     public bool Cancel(string id)
     {
         if (_running.TryGetValue(id, out var cts)) { cts.Cancel(); return true; }
-        return _activity.TryRemove(new KeyValuePair<string, string>(id, "queued"));
+        var dropped = _activity.TryRemove(new KeyValuePair<string, string>(id, "queued"));
+        if (dropped) _idleSince = DateTime.UtcNow;
+        return dropped;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -83,6 +91,7 @@ public sealed class JobRunner(string home, Func<Job, ServeMeta, IReadOnlyList<IS
             {
                 _running.TryRemove(id, out _);
                 _activity.TryRemove(id, out _);
+                _idleSince = DateTime.UtcNow;
             }
         }
     }

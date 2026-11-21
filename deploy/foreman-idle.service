@@ -1,0 +1,8 @@
+# Powers the machine off when foreman serve has been idle for FOREMAN_IDLE_MINUTES; see foreman-idle.sh.
+[Unit]
+Description=Power off when Foreman is idle
+After=foreman.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/foreman-idle

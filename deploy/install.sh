@@ -8,6 +8,8 @@
 # file /etc/foreman/foreman.env (mode 600) with a new random FOREMAN_TOKEN; the systemd unit, enabled.
 # What it doesn't: open any port, install Tailscale, or put a model credential anywhere. It asks you to do those.
 # Running it again upgrades Foreman and keeps the jobs, the settings and Claude Code's sign-in.
+# For a cloud VM started on demand, install with FOREMAN_IDLE_MINUTES=30 in the environment (sudo env
+# FOREMAN_IDLE_MINUTES=30 bash install.sh): the machine then powers itself off after that long with nothing to do.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,11 +80,21 @@ EOF
 else
   echo "   kept the existing settings file"
 fi
+if ! grep -q '^FOREMAN_IDLE_MINUTES=' /etc/foreman/foreman.env; then
+  cat >> /etc/foreman/foreman.env <<EOF
+# Power the machine off after this many minutes with nothing queued or running and no call from a person
+# (0: never). For a cloud VM that Tower starts on demand; see /usr/local/sbin/foreman-idle.
+FOREMAN_IDLE_MINUTES=${FOREMAN_IDLE_MINUTES:-0}
+EOF
+fi
 
 echo "== systemd"
 cp "$here/foreman.service" /etc/systemd/system/foreman.service
+install -m 0755 "$here/foreman-idle.sh" /usr/local/sbin/foreman-idle
+cp "$here/foreman-idle.service" "$here/foreman-idle.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable foreman >/dev/null
+systemctl enable --now foreman-idle.timer >/dev/null
 
 if grep -qE '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=.+' /etc/foreman/foreman.env; then
   systemctl restart foreman

@@ -47,6 +47,9 @@ public static class ForemanServer
         ["serve.log"] = "serve.log",
     };
 
+    /// <summary>Sent by Tower's background refresh: such calls don't count as activity.</summary>
+    public const string BackgroundHeader = "X-Foreman-Background";
+
     public static WebApplication Build(ServerOptions o, IJobRunner runner, IHostedService? worker = null, IHostedService? janitor = null)
     {
         if (o.Token.Length < 24) throw new InvalidOperationException("FOREMAN_TOKEN must be set to a random secret of at least 24 characters");
@@ -63,6 +66,9 @@ public static class ForemanServer
         });
         var app = builder.Build();
         var expected = Encoding.UTF8.GetBytes("Bearer " + o.Token);
+        // The last call a person made through Tower. Tower's background refresh says so in a header and doesn't count:
+        // otherwise it would keep an on-demand machine from ever going idle.
+        long lastCall = DateTime.MinValue.Ticks;
 
         app.Use(async (ctx, next) =>
         {
@@ -72,10 +78,18 @@ public static class ForemanServer
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
+            if (ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Headers[BackgroundHeader].Count == 0)
+                Interlocked.Exchange(ref lastCall, DateTime.UtcNow.Ticks);
             await next();
         });
 
-        app.MapGet("/health", () => Results.Ok(new { ok = true }));
+        // busy and idleSeconds let the machine power itself off when nothing has happened for a while (deploy/foreman-idle.sh).
+        app.MapGet("/health", () =>
+        {
+            var call = new DateTime(Interlocked.Read(ref lastCall), DateTimeKind.Utc);
+            var since = runner.IdleSince is { } idle ? (idle > call ? idle : call) : (DateTime?)null;
+            return Results.Ok(new { ok = true, busy = since is null, idleSeconds = since is { } t ? (long)(DateTime.UtcNow - t).TotalSeconds : 0 });
+        });
 
         var api = app.MapGroup("/api/jobs");
         api.MapGet("/", () => Results.Ok(ServeJobs(o.Home).Select(j => JobViews.Of(j, runner.Activity(j.Id))).OrderByDescending(v => v.Updated ?? v.Created).ToList()));

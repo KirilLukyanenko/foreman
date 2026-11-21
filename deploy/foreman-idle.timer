@@ -1,0 +1,9 @@
+[Unit]
+Description=Check every few minutes whether Foreman is idle
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

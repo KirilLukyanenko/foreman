@@ -24,6 +24,7 @@ public sealed class ServerTests : IAsyncLifetime
         public bool Enqueue(string id) { if (Queued.Contains(id)) return false; Queued.Add(id); return true; }
         public string? Activity(string id) => Queued.Contains(id) ? "queued" : null;
         public bool Cancel(string id) => Queued.Remove(id);
+        public DateTime? IdleSince => Queued.Count > 0 ? null : DateTime.UtcNow.AddHours(-1);
     }
 
     public async ValueTask InitializeAsync()
@@ -59,6 +60,28 @@ public sealed class ServerTests : IAsyncLifetime
         anonymous.DefaultRequestHeaders.Authorization = new("Bearer", Token + "x");
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/jobs", ct)).StatusCode);
         Assert.Throws<InvalidOperationException>(() => ForemanServer.Build(new ServerOptions(_home, "short"), _runner));
+    }
+
+    [Fact]
+    public async Task Health_says_how_long_nothing_has_happened_and_background_refreshes_do_not_count()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        async Task<JsonElement> Health() => await (await _http.GetAsync("/health", ct)).Content.ReadFromJsonAsync<JsonElement>(ct);
+
+        using var refresh = new HttpRequestMessage(HttpMethod.Get, "/api/jobs");
+        refresh.Headers.Add(ForemanServer.BackgroundHeader, "1");
+        (await _http.SendAsync(refresh, ct)).EnsureSuccessStatusCode();
+        var h = await Health();
+        Assert.False(h.GetProperty("busy").GetBoolean());
+        Assert.InRange(h.GetProperty("idleSeconds").GetInt64(), 3500, 3700); // the runner has been idle for an hour
+
+        (await _http.GetAsync("/api/jobs", ct)).EnsureSuccessStatusCode();
+        Assert.InRange((await Health()).GetProperty("idleSeconds").GetInt64(), 0, 60); // a person looked just now
+
+        await CreateAsync();
+        h = await Health();
+        Assert.True(h.GetProperty("busy").GetBoolean());
+        Assert.Equal(0, h.GetProperty("idleSeconds").GetInt64());
     }
 
     [Theory]

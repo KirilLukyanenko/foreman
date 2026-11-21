@@ -57,6 +57,26 @@ Tried on a clean Ubuntu 24.04 container with systemd stubbed: the install, the l
 file and the upgrade. The whole test suite passes on Linux, the Docker tests included (against a separate Docker
 daemon).
 
+### On demand
+
+A machine that runs only for jobs costs a fraction of one left on (e2-standard-4: about $0.17 an hour, $126 a month
+round the clock; the disk is billed either way). Install with `sudo env FOREMAN_IDLE_MINUTES=30 bash install.sh` and
+the `foreman-idle` timer powers the machine off once nothing is queued or running and no person has called for that
+long. It never does while someone is logged in or in the first minutes after boot; if the service doesn't answer at
+all, it waits a whole idle period first. `/health` reports `busy` and `idleSeconds`; calls with an
+`X-Foreman-Background` header (a dashboard's refresh) don't count as activity.
+
+Whoever needs the machine starts it. A job waiting for the human waits on disk and goes on when the human answers
+and the machine is started again. In Tower this is `ForemanMachine`: it starts the VM through the Compute API
+(a service account allowed only to get and start that one instance), waits for `/health`, then passes the request
+on; the job list is served from Tower's last copy while the machine sleeps, so it never wakes it. From stopped to
+answering takes about a minute.
+
+How it is laid out in Google Cloud: the VM has no service account (client code on it gets no Google credentials from
+the metadata server), a reserved internal address that Tower calls, and a firewall rule denying it any connection
+into the project's internal network, so client code can't reach the other machines; replies to Tower pass, the
+firewall being stateful.
+
 ## Disk
 
 Each job keeps a volume with its set-up repository and an image of its environment, often gigabytes.
@@ -65,4 +85,7 @@ anything named after a job that no longer exists. The job folders stay, and a cl
 are set up again if it runs. `foreman gc [--older-than-days 14] [--dry-run]` does the same by hand. Shared volumes
 and images (the OSV database, the tool images) are never touched.
 
-Not yet done: Tower itself on the server.
+Tower runs on another VM in the same project and reaches this one over the internal network, no Tailscale needed.
+
+A model token copied out of a terminal can carry its line wraps as spaces; `claude` then says "Not logged in". The
+token has no whitespace: remove it before it goes into `foreman.env`.
